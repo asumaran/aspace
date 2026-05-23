@@ -1,0 +1,23 @@
+{
+  "modes": {
+    "treadmill": {
+      "enable": [
+        "REPLACE-WITH-TV-UUID"
+      ],
+      "disable": [
+        "REPLACE-WITH-DESK-MONITOR-UUID-1",
+        "REPLACE-WITH-DESK-MONITOR-UUID-2"
+      ]
+    },
+    "desk": {
+      "enable": [
+        "REPLACE-WITH-DESK-MONITOR-UUID-1",
+        "REPLACE-WITH-DESK-MONITOR-UUID-2"
+      ],
+      "disable": [
+        "REPLACE-WITH-TV-UUID"
+      ],
+      "main": "REPLACE-WITH-DESK-MAIN-UUID"
+    }
+  }
+}
