@@ -50,19 +50,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return State(config: config, displays: displays, activeProfile: activeProfile)
     }
 
-    /// A profile matches when the set of enabled displays equals its `active`
-    /// list. The built-in "all" matches when every known display is enabled.
+    /// A profile matches when the displays it lists as `disable` are exactly
+    /// the ones currently offline / disabled (among everything aspace knows
+    /// about). The built-in "all" matches when nothing known is offline.
     private func detectActiveProfile(displays: [DisplayInfo], config: AspaceConfig) -> String? {
-        let enabledUUIDs = Set(displays.filter { $0.isEnabled }.map { $0.uuid.uppercased() })
+        let known = DisplayKit.allKnownUUIDs()
+        let online = Set(displays.map { $0.uuid.uppercased() })
+        let offline = known.subtracting(online)
 
         for (name, profile) in config.profiles {
-            let active = Set(profile.active.map { $0.uppercased() })
-            if active == enabledUUIDs { return name }
+            let configured = Set(profile.disable.map { $0.uppercased() }).intersection(known)
+            if configured == offline { return name }
         }
 
-        // Detect built-in "all" — every known display is on.
-        let known = Set(displays.map { $0.uuid.uppercased() })
-        if !known.isEmpty && known == enabledUUIDs {
+        if offline.isEmpty && !known.isEmpty {
             return AspaceConfig.allProfileName
         }
         return nil

@@ -62,17 +62,19 @@ A98DE3E9-9016-4865-BAAE-2EF4805341B6   3        on       false  DELL U2723QE
 
 Copy `config.example.json` to `~/.config/aspace/config.json` and replace the
 placeholder UUIDs with the values from `aspace list`. Each profile lists the
-displays that should be active. Anything aspace has seen before but is not
-in the `active` list gets disconnected when the profile is applied.
+UUIDs to **disconnect**; every other known display stays (or becomes)
+enabled. This is "allow by default" — adding a new monitor or fat-fingering
+a UUID can never accidentally take all your screens offline. If a profile
+would leave zero displays enabled, aspace refuses to apply it.
 
 ```json
 {
   "profiles": {
     "treadmill": {
-      "active": ["6B111247-..."]
+      "disable": ["CD233C7A-...", "A98DE3E9-..."]
     },
     "desk": {
-      "active": ["CD233C7A-...", "A98DE3E9-..."],
+      "disable": ["6B111247-..."],
       "main":    "CD233C7A-..."
     }
   }
@@ -80,9 +82,14 @@ in the `active` list gets disconnected when the profile is applied.
 ```
 
 Once that's in place, `aspace profile treadmill` and `aspace profile desk`
-apply the layout, and `aspace profile all` brings every known display back.
-The menu bar app reads the same config on every menu open and exposes one
-item per profile plus a built-in "Reconnect all displays".
+apply the layout, and `aspace profile all` reconnects every known display
+(equivalent to a profile with an empty `disable` list). The menu bar app
+reads the same config on every menu open and exposes one item per profile
+plus a built-in "Reconnect all displays".
+
+`main` is optional. When omitted, macOS keeps the previous main display
+where possible — declare `main` explicitly only when the profile has 2+
+enabled displays and you care which one is the primary.
 
 ## Menu bar app
 

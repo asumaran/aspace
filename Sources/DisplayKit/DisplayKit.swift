@@ -60,6 +60,15 @@ public enum DisplayKit {
         return listDisplays().first { $0.uuid.uppercased() == target }
     }
 
+    /// All UUIDs aspace has ever observed (currently online plus anything
+    /// cached from a previous session). Useful for callers that need to
+    /// reason about disabled / disconnected displays.
+    public static func allKnownUUIDs() -> Set<String> {
+        let live = Set(listDisplays().map { $0.uuid.uppercased() })
+        let cached = Set(DisplayRegistry.load().entries.keys.map { $0.uppercased() })
+        return live.union(cached)
+    }
+
     // MARK: - Mutations
 
     /// Connect or disconnect a display by UUID. No-op if the display is

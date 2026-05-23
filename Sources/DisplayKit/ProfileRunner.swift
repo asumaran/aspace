@@ -1,19 +1,26 @@
 import Foundation
 import CoreGraphics
 
-/// Applies a profile by name. Built-in `"all"` enables every UUID we have ever
-/// observed (from `DisplayRegistry`) and disables nothing. Named profiles in
-/// the config enable everything in `active` and disable every other known
-/// UUID, then optionally set the main display.
+/// Applies a profile by name. A profile lists which UUIDs to DISABLE; every
+/// other known display gets (or stays) enabled. Built-in `"all"` disables
+/// nothing.
+///
+/// Safety net: the runner refuses to apply a profile that would leave zero
+/// displays enabled. Forgetting to list a UUID or making a typo therefore
+/// just leaves more screens on than intended — it cannot black everything
+/// out by accident.
 public enum ProfileRunner {
     public enum RunError: Error, CustomStringConvertible {
         case profileNotFound(String)
+        case wouldDisableEverything(String)
         case operation(String, Error)
 
         public var description: String {
             switch self {
             case .profileNotFound(let name):
                 return "Profile not found in config: \(name)"
+            case .wouldDisableEverything(let name):
+                return "Refusing to apply profile '\(name)': it would leave zero displays enabled"
             case .operation(let what, let err):
                 return "\(what): \(err)"
             }
@@ -26,31 +33,33 @@ public enum ProfileRunner {
     }
 
     public static func run(profile name: String, config: AspaceConfig) throws {
-        // 1) Figure out which UUIDs should end up active and which off.
-        let known = knownUUIDs()
-        let toActivate: Set<String>
+        let known = DisplayKit.allKnownUUIDs()
+        let toDisable: Set<String>
         let mainUUID: String?
 
         if name == AspaceConfig.allProfileName {
-            toActivate = known
+            toDisable = []
             mainUUID = nil
         } else if let profile = config.profiles[name] {
-            toActivate = Set(profile.active.map { $0.uppercased() })
+            toDisable = Set(profile.disable.map { $0.uppercased() })
             mainUUID = profile.main
         } else {
             throw RunError.profileNotFound(name)
         }
 
-        let toDeactivate = known.subtracting(toActivate)
+        let toEnable = known.subtracting(toDisable)
 
-        // 2) Enable first so we never end up with zero active displays.
-        for uuid in toActivate {
+        // Safety net: never end up with zero enabled displays.
+        if !known.isEmpty && toEnable.isEmpty {
+            throw RunError.wouldDisableEverything(name)
+        }
+
+        // Enable first so we never have a moment with zero active displays.
+        for uuid in toEnable {
             do { try DisplayKit.setEnabled(uuid: uuid, enabled: true) }
             catch { throw RunError.operation("enable \(uuid)", error) }
         }
 
-        // Let the system register the newly enabled displays before we
-        // reassign the main one and pull the rug from under the rest.
         Thread.sleep(forTimeInterval: 1.0)
 
         if let mainUUID = mainUUID {
@@ -59,18 +68,10 @@ public enum ProfileRunner {
             Thread.sleep(forTimeInterval: 0.5)
         }
 
-        for uuid in toDeactivate {
+        for uuid in toDisable where known.contains(uuid) {
             do { try DisplayKit.setEnabled(uuid: uuid, enabled: false) }
             catch { throw RunError.operation("disable \(uuid)", error) }
         }
     }
 
-    /// Every UUID we've ever observed (currently online or cached from a
-    /// previous session). The cache is also refreshed as a side effect of
-    /// calling `DisplayKit.listDisplays`, so this stays accurate over time.
-    private static func knownUUIDs() -> Set<String> {
-        let live = Set(DisplayKit.listDisplays().map { $0.uuid.uppercased() })
-        let cached = Set(DisplayRegistry.load().entries.keys.map { $0.uppercased() })
-        return live.union(cached)
-    }
 }

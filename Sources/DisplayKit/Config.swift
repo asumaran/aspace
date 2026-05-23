@@ -3,34 +3,35 @@ import Foundation
 /// User-supplied configuration for the menu bar app and the CLI's high-level
 /// profile commands. Lives at `~/.config/aspace/config.json`.
 ///
-/// Each profile lists the displays that should be active. Anything known to
-/// the system but not listed gets disconnected when the profile is applied.
+/// Each profile lists the displays that should be DISCONNECTED. Everything
+/// else known to the system stays on (or gets turned back on). This is an
+/// "allow by default" model on purpose — adding a new monitor or making a
+/// typo in a UUID can never accidentally take all your screens offline.
 ///
-/// The built-in `"all"` profile (always present, no config needed) enables
-/// every known display and disables nothing — use it as the "back to normal"
-/// fallback.
+/// The built-in `"all"` profile (always present, no config needed) disables
+/// nothing — use it as the "reconnect everything" command.
 ///
 /// Example:
 /// ```json
 /// {
 ///   "profiles": {
 ///     "treadmill": {
-///       "active": ["6B111247-..."]
+///       "disable": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."]
 ///     },
 ///     "desk": {
-///       "active": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."],
-///       "main":    "CD233C7A-..."
+///       "disable": ["6B111247-..."],
+///       "main":     "CD233C7A-..."
 ///     }
 ///   }
 /// }
 /// ```
 public struct AspaceConfig: Codable {
     public struct Profile: Codable {
-        public let active: [String]
+        public let disable: [String]
         public let main: String?
 
-        public init(active: [String], main: String? = nil) {
-            self.active = active
+        public init(disable: [String] = [], main: String? = nil) {
+            self.disable = disable
             self.main = main
         }
     }
@@ -41,7 +42,7 @@ public struct AspaceConfig: Codable {
         self.profiles = profiles
     }
 
-    /// Name of the built-in "everything on" profile.
+    /// Name of the built-in "disconnect nothing" profile.
     public static let allProfileName = "all"
 
     public static let storeURL: URL = {
