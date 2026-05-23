@@ -54,10 +54,27 @@ public enum ProfileRunner {
             throw RunError.wouldDisableEverything(name)
         }
 
+        // Snapshot of which UUIDs are currently online — we use it to decide
+        // whether a failed enable is a real bug (display IS online) or a
+        // stale registry entry (display was only in our cache).
+        let liveUUIDs = Set(DisplayKit.listDisplays().map { $0.uuid.uppercased() })
+
         // Enable first so we never have a moment with zero active displays.
         for uuid in toEnable {
-            do { try DisplayKit.setEnabled(uuid: uuid, enabled: true) }
-            catch { throw RunError.operation("enable \(uuid)", error) }
+            do {
+                try DisplayKit.setEnabled(uuid: uuid, enabled: true)
+            } catch {
+                if liveUUIDs.contains(uuid) {
+                    // Currently online display refused to be (re)enabled —
+                    // surface the failure to the caller.
+                    throw RunError.operation("enable \(uuid)", error)
+                }
+                // Cached-only entry whose displayID no longer maps to anything
+                // real (transient AirPlay / Sidecar / closed-lid display).
+                // Drop it from the registry so future profile applies stop
+                // tripping over it.
+                pruneStaleEntry(uuid: uuid)
+            }
         }
 
         Thread.sleep(forTimeInterval: 1.0)
@@ -74,4 +91,9 @@ public enum ProfileRunner {
         }
     }
 
+    private static func pruneStaleEntry(uuid: String) {
+        var registry = DisplayRegistry.load()
+        registry.remove(uuid: uuid)
+        registry.save()
+    }
 }

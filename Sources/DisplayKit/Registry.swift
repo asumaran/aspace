@@ -50,6 +50,10 @@ struct DisplayRegistry: Codable {
         )
     }
 
+    mutating func remove(uuid: String) {
+        entries.removeValue(forKey: uuid.uppercased())
+    }
+
     func lookup(uuid: String) -> CGDirectDisplayID? {
         guard let entry = entries[uuid.uppercased()] else { return nil }
         return CGDirectDisplayID(entry.displayID)
