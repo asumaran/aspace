@@ -40,27 +40,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private struct State {
         let config: AspaceConfig
         let displays: [DisplayInfo]
-        let activeMode: String?
+        let activeProfile: String?
     }
 
     private func currentState() -> State {
         let config = AspaceConfig.loadOrEmpty()
         let displays = DisplayKit.listDisplays()
-        let activeMode = detectActiveMode(displays: displays, config: config)
-        return State(config: config, displays: displays, activeMode: activeMode)
+        let activeProfile = detectActiveProfile(displays: displays, config: config)
+        return State(config: config, displays: displays, activeProfile: activeProfile)
     }
 
-    /// A mode is "active" when every UUID it expects enabled is enabled AND
-    /// every UUID it expects disabled is offline / disabled.
-    private func detectActiveMode(displays: [DisplayInfo], config: AspaceConfig) -> String? {
+    /// A profile matches when the set of enabled displays equals its `active`
+    /// list. The built-in "all" matches when every known display is enabled.
+    private func detectActiveProfile(displays: [DisplayInfo], config: AspaceConfig) -> String? {
         let enabledUUIDs = Set(displays.filter { $0.isEnabled }.map { $0.uuid.uppercased() })
 
-        for (name, mode) in config.modes {
-            let mustOn = Set(mode.enable.map { $0.uppercased() })
-            let mustOff = Set(mode.disable.map { $0.uppercased() })
-            if mustOn.isSubset(of: enabledUUIDs) && enabledUUIDs.isDisjoint(with: mustOff) {
-                return name
-            }
+        for (name, profile) in config.profiles {
+            let active = Set(profile.active.map { $0.uppercased() })
+            if active == enabledUUIDs { return name }
+        }
+
+        // Detect built-in "all" — every known display is on.
+        let known = Set(displays.map { $0.uuid.uppercased() })
+        if !known.isEmpty && known == enabledUUIDs {
+            return AspaceConfig.allProfileName
         }
         return nil
     }
@@ -69,30 +72,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func refresh() {
         let state = currentState()
-        renderStatusIcon(activeMode: state.activeMode)
+        renderStatusIcon(activeProfile: state.activeProfile)
         renderMenu(state: state)
     }
 
-    private func renderStatusIcon(activeMode: String?) {
+    private func renderStatusIcon(activeProfile: String?) {
         guard let button = statusItem.button else { return }
         let symbolName: String
-        switch activeMode {
-        case "treadmill": symbolName = "figure.walk"
-        case "desk":      symbolName = "display"
-        default:          symbolName = "display.2"
+        switch activeProfile {
+        case "treadmill":                   symbolName = "figure.walk"
+        case "desk":                        symbolName = "display"
+        case AspaceConfig.allProfileName:   symbolName = "display.2"
+        default:                            symbolName = "rectangle.on.rectangle.slash"
         }
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "aspace")
         image?.isTemplate = true
         button.image = image
-        button.toolTip = activeMode.map { "aspace — \($0)" } ?? "aspace"
+        button.toolTip = activeProfile.map { "aspace — \($0)" } ?? "aspace"
     }
 
     private func renderMenu(state: State) {
         menu.removeAllItems()
 
-        // Current mode header
+        // Current profile header
         let header = NSMenuItem(
-            title: "Mode: \(state.activeMode ?? "custom")",
+            title: "Profile: \(state.activeProfile ?? "custom")",
             action: nil,
             keyEquivalent: ""
         )
@@ -101,22 +105,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        // Mode switches
-        if state.config.modes.isEmpty {
-            let item = NSMenuItem(title: "No modes configured", action: #selector(openConfigDir), keyEquivalent: "")
+        // Profile switches
+        let profileNames = ProfileRunner.availableProfileNames(config: state.config)
+        for name in profileNames {
+            let title = name == AspaceConfig.allProfileName
+                ? "Reconnect all displays"
+                : "Switch to \(name)"
+            let item = NSMenuItem(title: title, action: #selector(runProfile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+            if state.activeProfile == name {
+                item.state = .on
+            }
+            menu.addItem(item)
+        }
+
+        if state.config.profiles.isEmpty {
+            let item = NSMenuItem(title: "(Edit config.json to add profiles)", action: #selector(openConfigDir), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
-        } else {
-            for name in state.config.modes.keys.sorted() {
-                let title = "Switch to \(name)"
-                let item = NSMenuItem(title: title, action: #selector(runMode(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = name
-                if state.activeMode == name {
-                    item.state = .on
-                }
-                menu.addItem(item)
-            }
         }
 
         menu.addItem(.separator())
@@ -152,16 +159,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Actions
 
-    @objc private func runMode(_ sender: NSMenuItem) {
+    @objc private func runProfile(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         let config = AspaceConfig.loadOrEmpty()
         do {
-            try ModeRunner.run(mode: name, config: config)
+            try ProfileRunner.run(profile: name, config: config)
         } catch {
-            presentError("Failed to apply mode '\(name)': \(error)")
+            presentError("Failed to apply profile '\(name)': \(error)")
         }
-        // refresh() will be triggered by the display reconfiguration callback,
-        // but call it explicitly too in case the callback is delayed.
+        // refresh() will also be triggered by the display reconfiguration
+        // callback, but call it explicitly in case the callback is delayed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.refresh()
         }

@@ -39,10 +39,15 @@ aspace list                           # show every display
 aspace disable <uuid>                 # take a display offline
 aspace enable  <uuid>                 # bring it back
 aspace main    <uuid>                 # make it the primary display
-aspace mode    <name>                 # apply a named mode from config.json
+aspace profile <name>                 # apply a profile (see Configuration)
+aspace profiles                       # list available profile names
 aspace is-enabled <uuid>              # "on" or "off"
 aspace is-main    <uuid>              # "true" or "false"
 ```
+
+The built-in `all` profile is always available and enables every display
+aspace has ever seen — handy as a "back to normal" command without having to
+declare every UUID in your config.
 
 `aspace list` example output:
 
@@ -56,29 +61,28 @@ A98DE3E9-9016-4865-BAAE-2EF4805341B6   3        on       false  DELL U2723QE
 ## Configuration
 
 Copy `config.example.json` to `~/.config/aspace/config.json` and replace the
-placeholder UUIDs with the values from `aspace list`. Each mode lists which
-displays to enable, which to disable, and optionally which one should end up
-as the main display.
+placeholder UUIDs with the values from `aspace list`. Each profile lists the
+displays that should be active. Anything aspace has seen before but is not
+in the `active` list gets disconnected when the profile is applied.
 
 ```json
 {
-  "modes": {
+  "profiles": {
     "treadmill": {
-      "enable":  ["6B111247-..."],
-      "disable": ["CD233C7A-...", "A98DE3E9-..."]
+      "active": ["6B111247-..."]
     },
     "desk": {
-      "enable":  ["CD233C7A-...", "A98DE3E9-..."],
-      "disable": ["6B111247-..."],
-      "main":     "CD233C7A-..."
+      "active": ["CD233C7A-...", "A98DE3E9-..."],
+      "main":    "CD233C7A-..."
     }
   }
 }
 ```
 
-Once that's in place, `aspace mode treadmill` and `aspace mode desk` apply the
-layout. The menu bar app reads the same config and exposes one menu item per
-mode.
+Once that's in place, `aspace profile treadmill` and `aspace profile desk`
+apply the layout, and `aspace profile all` brings every known display back.
+The menu bar app reads the same config on every menu open and exposes one
+item per profile plus a built-in "Reconnect all displays".
 
 ## Menu bar app
 

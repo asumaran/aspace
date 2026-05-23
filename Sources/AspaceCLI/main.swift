@@ -12,7 +12,10 @@ func usage() -> Never {
       enable     <uuid>           Reconnect a display
       disable    <uuid>           Disconnect a display
       main       <uuid>           Make a display the primary
-      mode       <name>           Apply a named mode from ~/.config/aspace/config.json
+      profile    <name>           Apply a profile (use "all" for built-in
+                                  "everything on"; others come from
+                                  ~/.config/aspace/config.json)
+      profiles                    List available profile names
       is-enabled <uuid>           Print "on" or "off"
       is-main    <uuid>           Print "true" or "false"
     """
@@ -56,10 +59,15 @@ do {
         try DisplayKit.setEnabled(uuid: requireArg(args, 2, "uuid"), enabled: false)
     case "main":
         try DisplayKit.setMain(uuid: requireArg(args, 2, "uuid"))
-    case "mode":
+    case "profile":
         let name = requireArg(args, 2, "name")
-        let config = try AspaceConfig.load()
-        try ModeRunner.run(mode: name, config: config)
+        let config = AspaceConfig.loadOrEmpty()
+        try ProfileRunner.run(profile: name, config: config)
+    case "profiles":
+        let config = AspaceConfig.loadOrEmpty()
+        for name in ProfileRunner.availableProfileNames(config: config) {
+            print(name)
+        }
     case "is-enabled":
         let uuid = requireArg(args, 2, "uuid")
         let enabled = DisplayKit.display(forUUID: uuid)?.isEnabled ?? false

@@ -1,42 +1,48 @@
 import Foundation
 
 /// User-supplied configuration for the menu bar app and the CLI's high-level
-/// mode commands. Lives at `~/.config/aspace/config.json`.
+/// profile commands. Lives at `~/.config/aspace/config.json`.
+///
+/// Each profile lists the displays that should be active. Anything known to
+/// the system but not listed gets disconnected when the profile is applied.
+///
+/// The built-in `"all"` profile (always present, no config needed) enables
+/// every known display and disables nothing — use it as the "back to normal"
+/// fallback.
 ///
 /// Example:
 /// ```json
 /// {
-///   "modes": {
+///   "profiles": {
 ///     "treadmill": {
-///       "enable":  ["6B111247-..."],
-///       "disable": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."]
+///       "active": ["6B111247-..."]
 ///     },
 ///     "desk": {
-///       "enable":  ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."],
-///       "disable": ["6B111247-..."],
-///       "main":     "CD233C7A-..."
+///       "active": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."],
+///       "main":    "CD233C7A-..."
 ///     }
 ///   }
 /// }
 /// ```
 public struct AspaceConfig: Codable {
-    public struct Mode: Codable {
-        public let enable: [String]
-        public let disable: [String]
+    public struct Profile: Codable {
+        public let active: [String]
         public let main: String?
 
-        public init(enable: [String] = [], disable: [String] = [], main: String? = nil) {
-            self.enable = enable
-            self.disable = disable
+        public init(active: [String], main: String? = nil) {
+            self.active = active
             self.main = main
         }
     }
 
-    public let modes: [String: Mode]
+    public let profiles: [String: Profile]
 
-    public init(modes: [String: Mode]) {
-        self.modes = modes
+    public init(profiles: [String: Profile]) {
+        self.profiles = profiles
     }
+
+    /// Name of the built-in "everything on" profile.
+    public static let allProfileName = "all"
 
     public static let storeURL: URL = {
         FileManager.default.homeDirectoryForCurrentUser
@@ -49,6 +55,6 @@ public struct AspaceConfig: Codable {
     }
 
     public static func loadOrEmpty() -> AspaceConfig {
-        (try? load()) ?? AspaceConfig(modes: [:])
+        (try? load()) ?? AspaceConfig(profiles: [:])
     }
 }
