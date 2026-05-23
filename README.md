@@ -18,18 +18,42 @@ running a heavy menu bar app full of features I don't need.
 ## Requirements
 
 - macOS 13 or newer (built and tested on macOS 26 Tahoe, Apple Silicon)
-- Xcode Command Line Tools (`xcode-select --install`)
 
-## Build
+## Install
+
+### From a pre-built release (recommended)
+
+Only Apple Silicon binaries are published. Pick a version from the
+[releases page](https://github.com/asumaran/aspace/releases) and:
+
+```bash
+VERSION=v0.1.1
+
+# CLI
+curl -fL -o /tmp/aspace.tar.gz \
+  "https://github.com/asumaran/aspace/releases/download/${VERSION}/aspace-${VERSION}-darwin-arm64.tar.gz"
+tar -xzf /tmp/aspace.tar.gz -C /tmp
+install -m 0755 /tmp/aspace ~/.local/bin/aspace   # anywhere on your $PATH
+
+# Menu bar app
+curl -fL -o /tmp/Aspace.app.zip \
+  "https://github.com/asumaran/aspace/releases/download/${VERSION}/Aspace-${VERSION}.app.zip"
+ditto -xk /tmp/Aspace.app.zip /Applications
+xattr -dr com.apple.quarantine /Applications/Aspace.app
+```
+
+### Build from source
+
+Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 # CLI
 swift build -c release
-cp .build/release/aspace /usr/local/bin/
+cp .build/release/aspace ~/.local/bin/
 
 # Menu bar app
 ./Scripts/build-app.sh
-cp -r build/Aspace.app /Applications/
+cp -R build/Aspace.app /Applications/
 ```
 
 ## CLI usage
@@ -45,9 +69,9 @@ aspace is-enabled <uuid>              # "on" or "off"
 aspace is-main    <uuid>              # "true" or "false"
 ```
 
-The built-in `all` profile is always available and enables every display
-aspace has ever seen — handy as a "back to normal" command without having to
-declare every UUID in your config.
+The built-in `all` profile is always available and reconnects every display
+aspace knows about (equivalent to a profile with an empty `disable` list) —
+handy as a "back to normal" shortcut.
 
 `aspace list` example output:
 
@@ -94,10 +118,11 @@ enabled displays and you care which one is the primary.
 ## Menu bar app
 
 `Aspace.app` runs as a menu bar accessory (no Dock icon). The icon changes
-with the active mode (`figure.walk` for treadmill, `display` for desk,
-`display.2` if the current layout matches no configured mode). Open the menu
-to switch modes, see each display's connection / main state, or open the
-config folder.
+with the active profile (`figure.walk` for treadmill, `display` for desk,
+`display.2` for all displays on, `rectangle.on.rectangle.slash` if the
+current layout matches no configured profile). Open the menu to switch
+profiles, see each display's connection / main state, or open the config
+folder.
 
 ## How it works (and how it might break)
 
@@ -112,10 +137,14 @@ config folder.
 
 When a display is disabled, it disappears from `CGGetOnlineDisplayList` and
 its `CGDirectDisplayID` is no longer discoverable by UUID. To handle
-re-enabling, aspace persists a `UUID → displayID` map at
+re-enabling, aspace persists a `UUID → displayID` (plus name) map at
 `~/.config/aspace/displays.json` and reuses the cached id. The disable uses
 `CGConfigureOption.forSession`, so a reboot always brings every display back
 and the cache becomes harmless if stale.
+
+If a cached entry no longer maps to a real display (transient AirPlay,
+Sidecar, briefly-opened laptop lid, etc.), applying a profile prunes the
+stale entry from the registry automatically instead of aborting.
 
 ## Compared to BetterDisplay / Lunar
 
