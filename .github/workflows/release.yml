@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build aspace CLI (release)
+        run: swift build -c release --product aspace
+
+      - name: Build Aspace.app bundle
+        run: ./Scripts/build-app.sh
+
+      - name: Package CLI
+        run: |
+          mkdir -p dist
+          BIN_PATH="$(swift build -c release --product aspace --show-bin-path)/aspace"
+          tar -czf "dist/aspace-${VERSION}-darwin-arm64.tar.gz" -C "$(dirname "$BIN_PATH")" aspace
+
+      - name: Package .app
+        run: |
+          ditto -ck --keepParent --sequesterRsrc build/Aspace.app \
+            "dist/Aspace-${VERSION}.app.zip"
+
+      - name: Compute checksums
+        working-directory: dist
+        run: shasum -a 256 * > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/aspace-${{ github.ref_name }}-darwin-arm64.tar.gz
+            dist/Aspace-${{ github.ref_name }}.app.zip
+            dist/SHA256SUMS
+          generate_release_notes: true
