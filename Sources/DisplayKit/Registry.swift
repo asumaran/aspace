@@ -13,6 +13,7 @@ struct DisplayRegistry: Codable {
 
     struct Entry: Codable {
         let displayID: UInt32
+        let name: String?
         let lastSeen: Date
     }
 
@@ -39,9 +40,14 @@ struct DisplayRegistry: Codable {
         }
     }
 
-    mutating func record(uuid: String, displayID: CGDirectDisplayID) {
+    mutating func record(uuid: String, displayID: CGDirectDisplayID, name: String? = nil) {
         let key = uuid.uppercased()
-        entries[key] = Entry(displayID: UInt32(displayID), lastSeen: Date())
+        let existing = entries[key]
+        entries[key] = Entry(
+            displayID: UInt32(displayID),
+            name: name ?? existing?.name,
+            lastSeen: Date()
+        )
     }
 
     func lookup(uuid: String) -> CGDirectDisplayID? {

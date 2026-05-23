@@ -50,7 +50,7 @@ public enum DisplayKit {
             )
         }
         var registry = DisplayRegistry.load()
-        for d in displays { registry.record(uuid: d.uuid, displayID: d.id) }
+        for d in displays { registry.record(uuid: d.uuid, displayID: d.id, name: d.name) }
         registry.save()
         return displays
     }
@@ -82,7 +82,7 @@ public enum DisplayKit {
         if let live = displayID(forUUID: uuid) {
             targetID = live
             isCurrentlyOnline = true
-            registry.record(uuid: uuid, displayID: live)
+            registry.record(uuid: uuid, displayID: live, name: displayName(for: live))
             registry.save()
         } else if let cached = registry.lookup(uuid: uuid) {
             targetID = cached
