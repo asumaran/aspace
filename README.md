@@ -60,14 +60,14 @@ xattr -dr com.apple.quarantine /Applications/Aspace.app
 Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
-# CLI
-swift build -c release
-cp .build/release/aspace ~/.local/bin/
-
-# Menu bar app
-./Scripts/build-app.sh
-cp -R build/Aspace.app /Applications/
+git clone https://github.com/asumaran/aspace.git
+cd aspace
+make install   # builds CLI + app and installs to ~/.local/bin and /Applications
 ```
+
+Other Makefile targets: `make` (build only), `make test`, `make uninstall`,
+`make clean`, `make help`. Override install locations with
+`make install PREFIX=/usr/local APP_DEST=~/Applications`.
 
 ## CLI usage
 
