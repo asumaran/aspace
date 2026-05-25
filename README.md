@@ -1,18 +1,31 @@
 # aspace
 
 Tiny macOS utility that disconnects and reconnects displays without unplugging
-the cable, plus a menu bar app that lets you flip between layouts in one click.
+the cable, plus a menu bar app that switches between display layouts in one
+click.
 
-Built because I wanted to toggle between **walking on the treadmill with only
-the TV active** and **working at the desk with the monitors back** — without
-running a heavy menu bar app full of features I don't need.
+Useful for any setup where you want fast, scriptable control over which
+displays are active:
+
+- Switch between a multi-monitor workstation and a single-display focus mode
+- Drop down to one screen for an exercise bike, treadmill desk, or couch
+  session, then bring everything back at the desk
+- Hide secondary monitors during presentations or screen recordings
+- Park unused displays so macOS stops placing windows on them when you step
+  away from the desk
+- Save power on a laptop by quickly cutting external displays off the bus
+- Apply a named layout (`aspace profile name`) from a shell script, Shortcut,
+  Stream Deck button, or any other automation
+
+Reach for it when you just want disconnect / reconnect / pick-a-main, without
+the surface area of a full monitor manager.
 
 ## What's in the box
 
 | Target            | What it is                                      |
 |-------------------|-------------------------------------------------|
 | `aspace`          | CLI to list, enable, disable, set-main displays |
-| `Aspace.app`      | Menu bar app, one-click mode switching          |
+| `Aspace.app`      | Menu bar app, one-click profile switching       |
 | `DisplayKit`      | Swift library shared by both                    |
 
 ## Requirements
@@ -27,7 +40,7 @@ Only Apple Silicon binaries are published. Pick a version from the
 [releases page](https://github.com/asumaran/aspace/releases) and:
 
 ```bash
-VERSION=v0.1.1
+VERSION=v0.1.6
 
 # CLI
 curl -fL -o /tmp/aspace.tar.gz \
@@ -77,9 +90,9 @@ handy as a "back to normal" shortcut.
 
 ```
 UUID                                   ID       ENABLED  MAIN   NAME
-CD233C7A-6722-4046-A421-579C671BE97C   2        on       true   Studio Display
-A98DE3E9-9016-4865-BAAE-2EF4805341B6   3        on       false  DELL U2723QE
-6B111247-75E3-471D-BC65-C64100DE3187   4        on       false  LG TV SSCR2
+A1B2C3D4-1111-2222-3333-444455556666   1        on       true   Built-in Retina Display
+B2C3D4E5-2222-3333-4444-555566667777   2        on       false  External 4K Display
+C3D4E5F6-3333-4444-5555-666677778888   3        on       false  Secondary Monitor
 ```
 
 ## Configuration
@@ -94,22 +107,25 @@ would leave zero displays enabled, aspace refuses to apply it.
 ```json
 {
   "profiles": {
-    "treadmill": {
-      "disable": ["CD233C7A-...", "A98DE3E9-..."]
+    "focus": {
+      "disable": ["B2C3D4E5-...", "C3D4E5F6-..."]
     },
-    "desk": {
-      "disable": ["6B111247-..."],
-      "main":    "CD233C7A-..."
+    "workstation": {
+      "disable": ["C3D4E5F6-..."],
+      "main":    "B2C3D4E5-..."
     }
   }
 }
 ```
 
-Once that's in place, `aspace profile treadmill` and `aspace profile desk`
-apply the layout, and `aspace profile all` reconnects every known display
-(equivalent to a profile with an empty `disable` list). The menu bar app
-reads the same config on every menu open and exposes one item per profile
-plus a built-in "Reconnect all displays".
+Profile names are free-form — pick whatever maps to your workflow (`focus`,
+`workstation`, `presentation`, `couch`, `recording`, etc.). The built-in
+`all` profile is always available (no config needed) and reconnects every
+known display.
+
+Once the config is in place, `aspace profile <name>` applies the layout.
+The menu bar app reads the same config on every menu open and exposes one
+item per profile plus a built-in "Reconnect all displays".
 
 `main` is optional. When omitted, macOS keeps the previous main display
 where possible — declare `main` explicitly only when the profile has 2+
@@ -117,12 +133,14 @@ enabled displays and you care which one is the primary.
 
 ## Menu bar app
 
-`Aspace.app` runs as a menu bar accessory (no Dock icon). The icon changes
-with the active profile (`figure.walk` for treadmill, `display` for desk,
-`display.2` for all displays on, `rectangle.on.rectangle.slash` if the
-current layout matches no configured profile). Open the menu to switch
-profiles, see each display's connection / main state, or open the config
-folder.
+`Aspace.app` runs as a menu bar accessory (no Dock icon). The icon reflects
+the active profile via SF Symbols: `display.2` when every known display is
+enabled (the built-in `all` profile), and `rectangle.on.rectangle.slash`
+when the live layout matches no configured profile. A few well-known
+profile names get themed icons baked in (`treadmill` → `figure.walk`,
+`desk` → `display`); any other name falls back to the generic icon. Open
+the menu to switch profiles, inspect each display's connection / main
+state, or jump to the config folder.
 
 ## How it works (and how it might break)
 
