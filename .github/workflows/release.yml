@@ -15,19 +15,11 @@ jobs:
       VERSION: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # We want full history so build-app.sh's `git describe` resolves.
+          fetch-depth: 0
 
-      - name: Stamp version into Version.swift
-        run: |
-          cat > Sources/DisplayKit/Version.swift <<EOF
-          public enum AspaceVersion {
-              public static let current = "${VERSION}"
-          }
-          EOF
-
-      - name: Build aspace CLI (release)
-        run: swift build -c release --product aspace
-
-      - name: Build Aspace.app bundle
+      - name: Build CLI + app
         run: ./Scripts/build-app.sh
 
       - name: Package CLI

@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Wraps the SPM-built AspaceApp binary into a proper macOS .app bundle.
+# Builds the aspace CLI and packages the menu bar app as a .app bundle.
+# Stamps both binaries with `git describe` (or $VERSION) so they self-identify
+# instead of reporting "dev".
+#
 # Run from the repo root:  ./Scripts/build-app.sh
 #
-# Output: ./build/Aspace.app
+# Output:
+#   .build/<config>/aspace          (CLI binary, same one referenced by
+#                                    ~/.local/bin/aspace if you symlinked it)
+#   build/Aspace.app                (menu bar app bundle)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,7 +17,29 @@ cd "$REPO_ROOT"
 CONFIG=${CONFIG:-release}
 APP_NAME="Aspace"
 BUNDLE_ID="com.asumaran.aspace"
-VERSION=${VERSION:-0.1.0}
+
+# Pick a version: explicit $VERSION wins, then `git describe --tags --dirty`,
+# then a hardcoded fallback.
+if [[ -z "${VERSION:-}" ]]; then
+  VERSION="$(git describe --tags --dirty 2>/dev/null || echo dev)"
+fi
+
+# Stamp Sources/DisplayKit/Version.swift, restoring it after the build so
+# the repo stays clean. Backup lives outside Sources/ so SPM doesn't warn
+# about an unhandled file.
+VERSION_FILE="Sources/DisplayKit/Version.swift"
+VERSION_BAK="$(mktemp -t aspace-version)"
+cp "$VERSION_FILE" "$VERSION_BAK"
+trap 'mv "$VERSION_BAK" "$VERSION_FILE"' EXIT
+cat > "$VERSION_FILE" <<EOF
+public enum AspaceVersion {
+    public static let current = "${VERSION}"
+}
+EOF
+echo ">> Stamped Version.swift with: ${VERSION}"
+
+echo ">> Building aspace CLI ($CONFIG)..."
+swift build -c "$CONFIG" --product aspace
 
 echo ">> Building AspaceApp ($CONFIG)..."
 swift build -c "$CONFIG" --product AspaceApp
