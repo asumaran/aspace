@@ -17,6 +17,7 @@ private func displayReconfigurationCallback(
 
 // MARK: - App delegate
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var menu: NSMenu!

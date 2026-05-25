@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -8,6 +8,9 @@ let package = Package(
         .library(name: "DisplayKit", targets: ["DisplayKit"]),
         .executable(name: "aspace", targets: ["AspaceCLI"]),
         .executable(name: "AspaceApp", targets: ["AspaceApp"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.10.0"),
     ],
     targets: [
         .target(
@@ -20,5 +23,12 @@ let package = Package(
         ),
         .executableTarget(name: "AspaceCLI", dependencies: ["DisplayKit"]),
         .executableTarget(name: "AspaceApp", dependencies: ["DisplayKit"]),
+        .testTarget(
+            name: "DisplayKitTests",
+            dependencies: [
+                "DisplayKit",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
     ]
 )
