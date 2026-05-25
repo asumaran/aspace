@@ -147,9 +147,9 @@ state, or jump to the config folder.
 - **Listing / detection**: only public CoreGraphics + `NSScreen` APIs.
 - **Setting the main display**: public `CGConfigureDisplayOrigin`, by shifting
   every display so the chosen one lands at (0, 0).
-- **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol — the
-  same one Lunar's BlackOut and BetterDisplay use under the hood. Apple has
-  shipped it stable for years, but it's undocumented and could disappear in a
+- **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol
+  (CoreGraphics, re-exported from `SkyLight.framework`). Apple has shipped
+  it stable for years, but it's undocumented and could disappear in a
   future macOS. If that happens, `list` and `main` keep working; the rest
   doesn't.
 
@@ -192,9 +192,19 @@ instead.
 
 ## Prior art and credit
 
-The private API trick (`CGSConfigureDisplayEnabled`) is documented in
-[Lunar's source](https://github.com/alin23/Lunar) — that's where I learned
-how the disconnect plumbing works.
+The `CGSConfigureDisplayEnabled` symbol has been used and documented by
+several open-source projects over the years. Useful references:
+
+- [`displayplacer/src/Header.h`](https://github.com/jakehilborn/displayplacer/blob/master/src/Header.h)
+  declares the C signature alongside other private CoreGraphics symbols.
+- [`oabdrabo/DisplayDisabler`](https://github.com/oabdrabo/DisplayDisabler#how-it-works)
+  has a short prose explanation of how the symbol takes a display offline
+  at the compositor level.
+
+Note that Lunar and BetterDisplay achieve a comparable disconnect / blackout
+user experience but with different mechanisms — Lunar uses DDC commands or
+mirror-mode tricks (no `CGSConfigureDisplayEnabled` in its source);
+BetterDisplay's implementation is closed source.
 
 ## License
 
