@@ -28,6 +28,12 @@ install: app ## Install aspace CLI to $(PREFIX)/bin and Aspace.app to $(APP_DEST
 	@cp -R "$(APP_BUNDLE)" "$(APP_DEST)/$(APP_NAME).app"
 	@echo "Installed app  -> $(APP_DEST)/$(APP_NAME).app"
 	@echo
+	@case ":$$PATH:" in \
+	  *":$(PREFIX)/bin:"*) ;; \
+	  *) printf "\033[33mWarning:\033[0m %s is not in your \$$PATH.\n" "$(PREFIX)/bin"; \
+	     printf "Add this to your shell rc (~/.zshrc, ~/.bashrc, etc):\n\n"; \
+	     printf "    export PATH=\"%s/bin:\$$PATH\"\n\n" "$(PREFIX)" ;; \
+	esac
 	@echo "Tip: open $(APP_DEST)/$(APP_NAME).app to start the menu bar app."
 
 uninstall: ## Remove installed CLI and Aspace.app (does not touch ~/.config/aspace)
