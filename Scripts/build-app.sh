@@ -58,6 +58,30 @@ mkdir -p "$OUT/Contents/Resources"
 
 cp "$BUILT_BIN" "$OUT/Contents/MacOS/$APP_NAME"
 
+# Embed Sparkle.framework. SPM links against it but does not copy it into
+# the .app bundle for us.
+SPARKLE_FRAMEWORK="$(swift build -c "$CONFIG" --product AspaceApp --show-bin-path)/Sparkle.framework"
+if [[ -d "$SPARKLE_FRAMEWORK" ]]; then
+  mkdir -p "$OUT/Contents/Frameworks"
+  cp -R "$SPARKLE_FRAMEWORK" "$OUT/Contents/Frameworks/Sparkle.framework"
+  echo ">> Embedded Sparkle.framework"
+fi
+
+# Sparkle update configuration. SUFeedURL is always set so the app knows
+# where to look; SUPublicEDKey is only added when SPARKLE_PUBLIC_KEY is
+# provided (typically by CI from a secret). Without the key Sparkle will
+# refuse to install updates, which is the safe default for local builds.
+SU_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/asumaran/aspace/main/appcast.xml}"
+SPARKLE_PLIST_KEYS=""
+SPARKLE_PLIST_KEYS+="    <key>SUFeedURL</key>
+    <string>${SU_FEED_URL}</string>
+"
+if [[ -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
+  SPARKLE_PLIST_KEYS+="    <key>SUPublicEDKey</key>
+    <string>${SPARKLE_PUBLIC_KEY}</string>
+"
+fi
+
 cat > "$OUT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -87,11 +111,22 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
-</dict>
+${SPARKLE_PLIST_KEYS}</dict>
 </plist>
 PLIST
 
-# Ad-hoc sign so macOS will run it without Gatekeeper griping at us locally.
+# Make the binary look for embedded frameworks in Contents/Frameworks.
+# SPM links against Sparkle expecting an @rpath that includes this directory;
+# without it dyld can't find the library at launch.
+if [[ -d "$OUT/Contents/Frameworks/Sparkle.framework" ]]; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "$OUT/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+fi
+
+# Re-sign everything (framework first so the app's signature can include it).
+if [[ -d "$OUT/Contents/Frameworks/Sparkle.framework" ]]; then
+  codesign --force --deep --sign - "$OUT/Contents/Frameworks/Sparkle.framework" >/dev/null
+fi
 codesign --force --sign - "$OUT/Contents/MacOS/$APP_NAME" >/dev/null
 
 echo ">> Done. Open with:  open $OUT"

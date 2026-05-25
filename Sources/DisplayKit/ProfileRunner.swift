@@ -59,9 +59,11 @@ public enum ProfileRunner {
         backend: DisplayBackend,
         sleep sleepFn: (TimeInterval) -> Void = { _ in },
         warn: (String) -> Void = { msg in
+            AspaceLog.profile.warning("\(msg, privacy: .public)")
             FileHandle.standardError.write(Data("aspace: \(msg)\n".utf8))
         }
     ) throws {
+        AspaceLog.profile.info("Applying profile '\(name, privacy: .public)'")
         let known = backend.allKnownUUIDs()
         let toDisable: Set<String>
         let mainUUID: String?
@@ -112,6 +114,8 @@ public enum ProfileRunner {
             do { try backend.setEnabled(uuid: uuid, enabled: false) }
             catch { throw RunError.operation("disable \(uuid)", error) }
         }
+
+        AspaceLog.profile.info("Profile '\(name, privacy: .public)' applied")
     }
 
     /// Pure prune logic that works on an in-memory registry. Internal so

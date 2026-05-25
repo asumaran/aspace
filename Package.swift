@@ -11,6 +11,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-testing", from: "0.10.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .target(
@@ -21,8 +23,20 @@ let package = Package(
                 .linkedFramework("IOKit"),
             ]
         ),
-        .executableTarget(name: "AspaceCLI", dependencies: ["DisplayKit"]),
-        .executableTarget(name: "AspaceApp", dependencies: ["DisplayKit"]),
+        .executableTarget(
+            name: "AspaceCLI",
+            dependencies: [
+                "DisplayKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
+        ),
+        .executableTarget(
+            name: "AspaceApp",
+            dependencies: [
+                "DisplayKit",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ]
+        ),
         .testTarget(
             name: "DisplayKitTests",
             dependencies: [

@@ -143,8 +143,27 @@ re-enabling, aspace persists a `UUID → displayID` (plus name) map at
 and the cache becomes harmless if stale.
 
 If a cached entry no longer maps to a real display (transient AirPlay,
-Sidecar, briefly-opened laptop lid, etc.), applying a profile prunes the
-stale entry from the registry automatically instead of aborting.
+Sidecar, briefly-opened laptop lid, etc.), the runner skips it with a
+warning instead of aborting; cleanup happens manually via
+`aspace prune [days]`.
+
+## Releasing
+
+Tagging `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`, which
+builds, packages, and publishes the CLI tarball + `.app.zip` to a new
+GitHub Release. The workflow looks for these optional repo secrets and
+upgrades the release accordingly:
+
+| Secret | Effect when set |
+|--------|-----------------|
+| `APPLE_DEVELOPER_CERT_B64` + `APPLE_DEVELOPER_CERT_PASS` + `APPLE_DEVELOPER_TEAM_ID` | Signs the app with Developer ID instead of ad-hoc |
+| `APPLE_NOTARY_USER` + `APPLE_NOTARY_PASS` (and the cert above) | Submits to Apple notary service and staples the ticket |
+| `SPARKLE_PRIVATE_KEY` (and `SPARKLE_PUBLIC_KEY` baked into `Info.plist` at build time) | Signs the update zip and appends the entry to `appcast.xml`, then commits/pushes the appcast back to `main` |
+
+Without any secrets the workflow still produces a working release —
+just ad-hoc signed and without auto-update support. See
+[docs/RELEASE_SECRETS.md](docs/RELEASE_SECRETS.md) for how to generate
+each value.
 
 ## Compared to BetterDisplay / Lunar
 

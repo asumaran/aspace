@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
+     version="2.0">
+    <channel>
+        <title>aspace</title>
+        <link>https://raw.githubusercontent.com/asumaran/aspace/main/appcast.xml</link>
+        <description>aspace update feed (Sparkle)</description>
+        <language>en</language>
+    </channel>
+</rss>

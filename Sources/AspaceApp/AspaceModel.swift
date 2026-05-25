@@ -1,0 +1,190 @@
+import Foundation
+import AppKit
+import CoreGraphics
+import DisplayKit
+
+/// View-model for the menu bar app. Holds the displays / config snapshot
+/// that the menu renders against, listens to CoreGraphics display
+/// reconfiguration events, and exposes intent methods (`applyProfile`,
+/// `openConfigFolder`, etc.) that the view calls.
+@MainActor
+final class AspaceModel: ObservableObject {
+    @Published private(set) var displays: [DisplayInfo] = []
+    @Published private(set) var config: AspaceConfig = AspaceConfig(profiles: [:])
+    @Published private(set) var activeProfile: String?
+    @Published private(set) var cliVersion: String?
+
+    init() {
+        registerForDisplayChanges()
+        refresh()
+    }
+
+    deinit {
+        CGDisplayRemoveReconfigurationCallback(displayReconfigurationCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    // MARK: - Derived state
+
+    /// SF Symbol name for the menu bar icon, picked from the active profile.
+    var statusSymbolName: String {
+        switch activeProfile {
+        case "treadmill":                   return "figure.walk"
+        case "desk":                        return "display"
+        case AspaceConfig.allProfileName:   return "display.2"
+        default:                            return "rectangle.on.rectangle.slash"
+        }
+    }
+
+    var statusTooltip: String {
+        activeProfile.map { "aspace — \($0)" } ?? "aspace"
+    }
+
+    var availableProfileNames: [String] {
+        ProfileRunner.availableProfileNames(config: config)
+    }
+
+    var versionMismatchMessage: String? {
+        guard let cli = cliVersion, cli != AspaceVersion.current else { return nil }
+        return "CLI version mismatch — click for details"
+    }
+
+    // MARK: - Actions
+
+    func refresh() {
+        config = AspaceConfig.loadOrEmpty()
+        displays = DisplayKit.listDisplays()
+        activeProfile = Self.detectActiveProfile(displays: displays, config: config)
+        cliVersion = Self.detectCLIVersion()
+        AspaceLog.app.debug("refresh: \(self.displays.count) displays, profile=\(self.activeProfile ?? "custom", privacy: .public)")
+    }
+
+    func applyProfile(_ name: String) {
+        do {
+            try ProfileRunner.run(profile: name, config: config)
+        } catch {
+            presentError("Failed to apply profile '\(name)': \(error)")
+        }
+        // The reconfig callback will fire and refresh, but call it explicitly
+        // in case the callback is delayed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.refresh()
+        }
+    }
+
+    func openConfigFolder() {
+        let dir = AspaceConfig.storeURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(dir)
+    }
+
+    func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "aspace \(AspaceVersion.current)"
+        alert.informativeText = "https://github.com/asumaran/aspace"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    func showVersionMismatchAlert() {
+        guard let cli = cliVersion else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "aspace CLI / App version mismatch"
+        alert.informativeText = """
+            App:  \(AspaceVersion.current)
+            CLI:  \(cli)
+
+            Both should be the same version to guarantee compatibility on
+            the shared files in ~/.config/aspace. Reinstall the older one
+            or update both to the same release.
+            """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    // MARK: - Internals
+
+    private func presentError(_ message: String) {
+        AspaceLog.app.error("\(message, privacy: .public)")
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "aspace error"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func registerForDisplayChanges() {
+        let opaque = Unmanaged.passUnretained(self).toOpaque()
+        CGDisplayRegisterReconfigurationCallback(displayReconfigurationCallback, opaque)
+    }
+
+    /// A profile matches when the displays it lists as `disable` are exactly
+    /// the ones currently offline / disabled. The built-in "all" matches
+    /// when nothing known is offline.
+    private static func detectActiveProfile(displays: [DisplayInfo], config: AspaceConfig) -> String? {
+        let known = DisplayKit.allKnownUUIDs()
+        let online = Set(displays.map { $0.uuid.uppercased() })
+        let offline = known.subtracting(online)
+
+        for (name, profile) in config.profiles {
+            let configured = Set(profile.disable.map { $0.uppercased() }).intersection(known)
+            if configured == offline { return name }
+        }
+
+        if offline.isEmpty && !known.isEmpty {
+            return AspaceConfig.allProfileName
+        }
+        return nil
+    }
+
+    /// Probe the `aspace` CLI in the usual install paths and ask for its
+    /// version. Used to surface mismatches in the menu.
+    private static func detectCLIVersion() -> String? {
+        let candidates = [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/aspace").path,
+            "/opt/homebrew/bin/aspace",
+            "/usr/local/bin/aspace",
+        ]
+        guard let binary = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            return nil
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["version"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let v = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (v?.isEmpty ?? true) ? nil : v
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - C callback trampoline
+
+/// CoreGraphics calls this from an arbitrary queue when the display layout
+/// changes (display attached/detached, mirroring change, resolution change,
+/// etc.). We hop to the main actor and refresh the model.
+private func displayReconfigurationCallback(
+    display: CGDirectDisplayID,
+    flags: CGDisplayChangeSummaryFlags,
+    userInfo: UnsafeMutableRawPointer?
+) {
+    guard let userInfo = userInfo else { return }
+    let model = Unmanaged<AspaceModel>.fromOpaque(userInfo).takeUnretainedValue()
+    Task { @MainActor in
+        model.refresh()
+    }
+}
