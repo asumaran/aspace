@@ -8,24 +8,18 @@ import CoreGraphics
 /// We deliberately use `CGConfigureOption.forSession` for the enable/disable
 /// op, so on reboot every display comes back online and stale cache entries
 /// become harmless — they just get overwritten on the next live observation.
-public struct DisplayRegistry: Codable {
+struct DisplayRegistry: Codable {
     /// Bumped when the on-disk shape changes in an incompatible way.
     /// Files without this field are treated as schema 1.
-    public static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 1
 
-    public var schemaVersion: Int
-    public var entries: [String: Entry]
+    var schemaVersion: Int
+    var entries: [String: Entry]
 
-    public struct Entry: Codable, Equatable {
-        public let displayID: UInt32
-        public let name: String?
-        public let lastSeen: Date
-
-        public init(displayID: UInt32, name: String?, lastSeen: Date) {
-            self.displayID = displayID
-            self.name = name
-            self.lastSeen = lastSeen
-        }
+    struct Entry: Codable, Equatable {
+        let displayID: UInt32
+        let name: String?
+        let lastSeen: Date
     }
 
     enum CodingKeys: String, CodingKey {
@@ -33,12 +27,12 @@ public struct DisplayRegistry: Codable {
         case entries
     }
 
-    public init(schemaVersion: Int = currentSchemaVersion, entries: [String: Entry] = [:]) {
+    init(schemaVersion: Int = currentSchemaVersion, entries: [String: Entry] = [:]) {
         self.schemaVersion = schemaVersion
         self.entries = entries
     }
 
-    public init(from decoder: Decoder) throws {
+    init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
             ?? Self.currentSchemaVersion
@@ -76,7 +70,7 @@ public struct DisplayRegistry: Codable {
         }
     }
 
-    public mutating func record(uuid: String, displayID: CGDirectDisplayID, name: String? = nil) {
+    mutating func record(uuid: String, displayID: CGDirectDisplayID, name: String? = nil) {
         let key = uuid.uppercased()
         let existing = entries[key]
         entries[key] = Entry(
@@ -86,11 +80,11 @@ public struct DisplayRegistry: Codable {
         )
     }
 
-    public mutating func remove(uuid: String) {
+    mutating func remove(uuid: String) {
         entries.removeValue(forKey: uuid.uppercased())
     }
 
-    public func lookup(uuid: String) -> CGDirectDisplayID? {
+    func lookup(uuid: String) -> CGDirectDisplayID? {
         guard let entry = entries[uuid.uppercased()] else { return nil }
         return CGDirectDisplayID(entry.displayID)
     }

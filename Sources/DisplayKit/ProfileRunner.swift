@@ -51,9 +51,9 @@ public enum ProfileRunner {
     // MARK: - Test seams
 
     /// Same logic as the production `run`, but with a pluggable backend and
-    /// sleep function so tests can avoid CoreGraphics and avoid the real
-    /// wall-clock delays.
-    public static func run(
+    /// sleep function so tests (via `@testable import`) can avoid touching
+    /// CoreGraphics and skip the real wall-clock delays.
+    static func run(
         profile name: String,
         config: AspaceConfig,
         backend: DisplayBackend,
@@ -114,10 +114,11 @@ public enum ProfileRunner {
         }
     }
 
-    /// Pure prune logic that works on an in-memory registry. Useful for
-    /// tests; production callers go through the disk-loading overload above.
+    /// Pure prune logic that works on an in-memory registry. Internal so
+    /// tests (via `@testable import`) can drive it without touching disk;
+    /// production callers go through the disk-loading overload above.
     @discardableResult
-    public static func prune(olderThanDays days: Int, in registry: inout DisplayRegistry, now: Date) -> [String] {
+    static func prune(olderThanDays days: Int, in registry: inout DisplayRegistry, now: Date) -> [String] {
         let cutoff = now.addingTimeInterval(-Double(days) * 86400)
         let stale = registry.entries.filter { $0.value.lastSeen < cutoff }.map { $0.key }
         for uuid in stale { registry.remove(uuid: uuid) }
