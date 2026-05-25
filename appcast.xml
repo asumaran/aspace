@@ -7,5 +7,13 @@
         <link>https://raw.githubusercontent.com/asumaran/aspace/main/appcast.xml</link>
         <description>aspace update feed (Sparkle)</description>
         <language>en</language>
+            <item>
+            <title>v0.1.6</title>
+            <pubDate>Mon, 25 May 2026 03:32:45 +0000</pubDate>
+            <sparkle:version>0.1.6</sparkle:version>
+            <sparkle:shortVersionString>0.1.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/asumaran/aspace/releases/download/v0.1.6/Aspace-v0.1.6.app.zip" type="application/octet-stream" sparkle:edSignature="zgQmOSrKZeIyKNrn/LuDsbj5uicex9t7AdnB46bI40EHcmTMgsgV10MOXANo6O0osxXl46jYIJzjGkxFHcwRDw==" length="1123710" />
+        </item>
     </channel>
 </rss>
