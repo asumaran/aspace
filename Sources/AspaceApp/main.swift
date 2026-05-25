@@ -154,6 +154,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let about = NSMenuItem(
+            title: "About aspace (\(AspaceVersion.current))",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        )
+        about.target = self
+        menu.addItem(about)
+
         let quit = NSMenuItem(title: "Quit aspace", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
     }
@@ -190,6 +198,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "aspace error"
         alert.informativeText = message
         alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "aspace \(AspaceVersion.current)"
+        alert.informativeText = "https://github.com/asumaran/aspace"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
         alert.runModal()
     }
 }

@@ -18,6 +18,7 @@ func usage() -> Never {
       profiles                    List available profile names
       is-enabled <uuid>           Print "on" or "off"
       is-main    <uuid>           Print "true" or "false"
+      version                     Print version and exit
     """
     FileHandle.standardError.write(Data((text + "\n").utf8))
     exit(2)
@@ -76,6 +77,8 @@ do {
         let uuid = requireArg(args, 2, "uuid")
         let main = DisplayKit.display(forUUID: uuid)?.isMain ?? false
         print(main ? "true" : "false")
+    case "version", "--version", "-v":
+        print(AspaceVersion.current)
     case "-h", "--help", "help":
         usage()
     default:

@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Stamp version into Version.swift
+        run: |
+          cat > Sources/DisplayKit/Version.swift <<EOF
+          public enum AspaceVersion {
+              public static let current = "${VERSION}"
+          }
+          EOF
+
       - name: Build aspace CLI (release)
         run: swift build -c release --product aspace
 
