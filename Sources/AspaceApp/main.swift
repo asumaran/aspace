@@ -41,13 +41,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let config: AspaceConfig
         let displays: [DisplayInfo]
         let activeProfile: String?
+        let cliVersion: String?
     }
 
     private func currentState() -> State {
         let config = AspaceConfig.loadOrEmpty()
         let displays = DisplayKit.listDisplays()
         let activeProfile = detectActiveProfile(displays: displays, config: config)
-        return State(config: config, displays: displays, activeProfile: activeProfile)
+        return State(
+            config: config,
+            displays: displays,
+            activeProfile: activeProfile,
+            cliVersion: detectCLIVersion()
+        )
+    }
+
+    /// Locates an `aspace` CLI in the usual install paths and asks it for
+    /// its version. Returns nil if no CLI is found or if the call fails.
+    private func detectCLIVersion() -> String? {
+        let candidates = [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/aspace").path,
+            "/opt/homebrew/bin/aspace",
+            "/usr/local/bin/aspace",
+        ]
+        let binary = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        guard let binary = binary else { return nil }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["version"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let v = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (v?.isEmpty ?? true) ? nil : v
+        } catch {
+            return nil
+        }
     }
 
     /// A profile matches when the displays it lists as `disable` are exactly
@@ -94,6 +129,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func renderMenu(state: State) {
         menu.removeAllItems()
+
+        // Version mismatch warning (only when CLI version differs from app)
+        if let cli = state.cliVersion, cli != AspaceVersion.current {
+            let warning = NSMenuItem(
+                title: "CLI version mismatch — click for details",
+                action: #selector(showVersionMismatch),
+                keyEquivalent: ""
+            )
+            warning.target = self
+            warning.representedObject = cli
+            menu.addItem(warning)
+            menu.addItem(.separator())
+        }
 
         // Current profile header
         let header = NSMenuItem(
@@ -207,6 +255,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "aspace \(AspaceVersion.current)"
         alert.informativeText = "https://github.com/asumaran/aspace"
         alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    @objc private func showVersionMismatch(_ sender: NSMenuItem) {
+        guard let cli = sender.representedObject as? String else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "aspace CLI / App version mismatch"
+        alert.informativeText = """
+            App:  \(AspaceVersion.current)
+            CLI:  \(cli)
+
+            Both should be the same version to guarantee compatibility on
+            the shared files in ~/.config/aspace. Reinstall the older one
+            or update both to the same release.
+            """
+        alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

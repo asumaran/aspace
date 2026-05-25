@@ -36,10 +36,28 @@ public struct AspaceConfig: Codable {
         }
     }
 
+    /// Bumped when the on-disk shape changes in an incompatible way.
+    /// Files without this field are treated as schema 1.
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
     public let profiles: [String: Profile]
 
-    public init(profiles: [String: Profile]) {
+    public init(profiles: [String: Profile], schemaVersion: Int = AspaceConfig.currentSchemaVersion) {
+        self.schemaVersion = schemaVersion
         self.profiles = profiles
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case profiles
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
+            ?? AspaceConfig.currentSchemaVersion
+        self.profiles = try c.decodeIfPresent([String: Profile].self, forKey: .profiles) ?? [:]
     }
 
     /// Name of the built-in "disconnect nothing" profile.
@@ -50,9 +68,24 @@ public struct AspaceConfig: Codable {
             .appendingPathComponent(".config/aspace/config.json")
     }()
 
+    public enum LoadError: Error, CustomStringConvertible {
+        case unsupportedSchema(found: Int, supported: Int)
+
+        public var description: String {
+            switch self {
+            case .unsupportedSchema(let found, let supported):
+                return "config.json schemaVersion \(found) is newer than this aspace build supports (\(supported)). Update aspace."
+            }
+        }
+    }
+
     public static func load() throws -> AspaceConfig {
         let data = try Data(contentsOf: storeURL)
-        return try JSONDecoder().decode(AspaceConfig.self, from: data)
+        let cfg = try JSONDecoder().decode(AspaceConfig.self, from: data)
+        if cfg.schemaVersion > currentSchemaVersion {
+            throw LoadError.unsupportedSchema(found: cfg.schemaVersion, supported: currentSchemaVersion)
+        }
+        return cfg
     }
 
     public static func loadOrEmpty() -> AspaceConfig {

@@ -9,12 +9,34 @@ import CoreGraphics
 /// op, so on reboot every display comes back online and stale cache entries
 /// become harmless — they just get overwritten on the next live observation.
 struct DisplayRegistry: Codable {
+    /// Bumped when the on-disk shape changes in an incompatible way.
+    /// Files without this field are treated as schema 1.
+    static let currentSchemaVersion = 1
+
+    var schemaVersion: Int = currentSchemaVersion
     var entries: [String: Entry] = [:]
 
     struct Entry: Codable {
         let displayID: UInt32
         let name: String?
         let lastSeen: Date
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case entries
+    }
+
+    init(schemaVersion: Int = currentSchemaVersion, entries: [String: Entry] = [:]) {
+        self.schemaVersion = schemaVersion
+        self.entries = entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
+            ?? Self.currentSchemaVersion
+        self.entries = try c.decodeIfPresent([String: Entry].self, forKey: .entries) ?? [:]
     }
 
     static let storeURL: URL = {
@@ -29,10 +51,21 @@ struct DisplayRegistry: Codable {
               let reg = try? JSONDecoder().decode(DisplayRegistry.self, from: data) else {
             return DisplayRegistry()
         }
+        if reg.schemaVersion > currentSchemaVersion {
+            // Future file from a newer aspace. Don't clobber it — fall back
+            // to an empty in-memory registry; saves will refuse to overwrite.
+            return DisplayRegistry()
+        }
         return reg
     }
 
     func save() {
+        // Refuse to overwrite a file written by a newer aspace.
+        if let existing = try? Data(contentsOf: Self.storeURL),
+           let decoded = try? JSONDecoder().decode(DisplayRegistry.self, from: existing),
+           decoded.schemaVersion > Self.currentSchemaVersion {
+            return
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? encoder.encode(self) {
