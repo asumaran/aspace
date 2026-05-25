@@ -54,9 +54,9 @@ public enum ProfileRunner {
             throw RunError.wouldDisableEverything(name)
         }
 
-        // Snapshot of which UUIDs are currently online — we use it to decide
-        // whether a failed enable is a real bug (display IS online) or a
-        // stale registry entry (display was only in our cache).
+        // Snapshot of which UUIDs are currently online so we can distinguish
+        // a real failure (display IS online but enable was rejected) from
+        // a cached-only attempt (display isn't currently connected).
         let liveUUIDs = Set(DisplayKit.listDisplays().map { $0.uuid.uppercased() })
 
         // Enable first so we never have a moment with zero active displays.
@@ -69,19 +69,26 @@ public enum ProfileRunner {
                     // surface the failure to the caller.
                     throw RunError.operation("enable \(uuid)", error)
                 }
-                // Cached-only entry whose displayID no longer maps to anything
-                // real (transient AirPlay / Sidecar / closed-lid display).
-                // Drop it from the registry so future profile applies stop
-                // tripping over it.
-                pruneStaleEntry(uuid: uuid)
+                // Cached-only entry whose displayID no longer maps to live
+                // hardware. Could be a phantom (transient AirPlay/Sidecar)
+                // or a real display that's temporarily disconnected and
+                // will come back later. We don't have a reliable way to
+                // tell the difference, so keep the entry and skip — a user
+                // can `aspace prune` to clean up old phantoms manually.
+                warn("skipped enable of \(uuid): not currently connected")
             }
         }
 
         Thread.sleep(forTimeInterval: 1.0)
 
         if let mainUUID = mainUUID {
-            do { try DisplayKit.setMain(uuid: mainUUID) }
-            catch { throw RunError.operation("main \(mainUUID)", error) }
+            do {
+                try DisplayKit.setMain(uuid: mainUUID)
+            } catch DisplayKitError.displayNotFound {
+                warn("cannot set main display \(mainUUID): not currently connected (profile applied without setting main)")
+            } catch {
+                throw RunError.operation("main \(mainUUID)", error)
+            }
             Thread.sleep(forTimeInterval: 0.5)
         }
 
@@ -91,9 +98,19 @@ public enum ProfileRunner {
         }
     }
 
-    private static func pruneStaleEntry(uuid: String) {
+    /// Removes registry entries that have not been observed in `days` days.
+    /// Returns the UUIDs that were pruned.
+    @discardableResult
+    public static func prune(olderThanDays days: Int) -> [String] {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
         var registry = DisplayRegistry.load()
-        registry.remove(uuid: uuid)
+        let stale = registry.entries.filter { $0.value.lastSeen < cutoff }.map { $0.key }
+        for uuid in stale { registry.remove(uuid: uuid) }
         registry.save()
+        return stale
+    }
+
+    private static func warn(_ msg: String) {
+        FileHandle.standardError.write(Data("aspace: \(msg)\n".utf8))
     }
 }

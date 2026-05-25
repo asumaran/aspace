@@ -16,6 +16,9 @@ func usage() -> Never {
                                   "everything on"; others come from
                                   ~/.config/aspace/config.json)
       profiles                    List available profile names
+      prune      [days]           Remove registry entries unseen for <days>
+                                  (default 30). Use 0 to drop every offline
+                                  entry.
       is-enabled <uuid>           Print "on" or "off"
       is-main    <uuid>           Print "true" or "false"
       version                     Print version and exit
@@ -68,6 +71,18 @@ do {
         let config = AspaceConfig.loadOrEmpty()
         for name in ProfileRunner.availableProfileNames(config: config) {
             print(name)
+        }
+    case "prune":
+        let days = args.indices.contains(2) ? (Int(args[2]) ?? 30) : 30
+        // First refresh registry so currently-online displays bump their
+        // lastSeen and aren't accidentally pruned.
+        _ = DisplayKit.listDisplays()
+        let removed = ProfileRunner.prune(olderThanDays: days)
+        if removed.isEmpty {
+            print("Nothing to prune (no entries older than \(days) days).")
+        } else {
+            print("Pruned \(removed.count) entr\(removed.count == 1 ? "y" : "ies"):")
+            for uuid in removed { print("  \(uuid)") }
         }
     case "is-enabled":
         let uuid = requireArg(args, 2, "uuid")
