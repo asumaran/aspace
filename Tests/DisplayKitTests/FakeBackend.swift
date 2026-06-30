@@ -10,6 +10,7 @@ final class FakeBackend: DisplayBackend {
         case enable(String)
         case disable(String)
         case setMain(String)
+        case setMode(String, String)
     }
 
     enum Failure: Error, Equatable {
@@ -28,6 +29,9 @@ final class FakeBackend: DisplayBackend {
 
     /// If non-nil, setMain throws this error for the given UUID.
     var mainFailure: (uuid: String, error: Error)?
+
+    /// UUIDs whose setMode call reports the mode as unavailable.
+    var modeUnavailable: Set<String> = []
 
     /// Operations recorded in the order the runner invoked them.
     private(set) var ops: [Op] = []
@@ -77,5 +81,16 @@ final class FakeBackend: DisplayBackend {
             throw DisplayKitError.displayNotFound(key)
         }
         ops.append(.setMain(key))
+    }
+
+    func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws {
+        let key = uuid.uppercased()
+        if !online.contains(key) {
+            throw DisplayKitError.displayNotFound(key)
+        }
+        if modeUnavailable.contains(key) {
+            throw DisplayKitError.modeNotAvailable(uuid: key, spec: spec.stringValue)
+        }
+        ops.append(.setMode(key, spec.stringValue))
     }
 }

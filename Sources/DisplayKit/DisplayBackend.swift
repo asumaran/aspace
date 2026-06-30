@@ -8,6 +8,7 @@ protocol DisplayBackend {
     func allKnownUUIDs() -> Set<String>
     func setEnabled(uuid: String, enabled: Bool) throws
     func setMain(uuid: String) throws
+    func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws
 }
 
 /// Production backend that delegates to `DisplayKit`'s real CoreGraphics
@@ -19,4 +20,7 @@ struct LiveDisplayBackend: DisplayBackend {
         try DisplayKit.setEnabled(uuid: uuid, enabled: enabled)
     }
     func setMain(uuid: String) throws { try DisplayKit.setMain(uuid: uuid) }
+    func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws {
+        try DisplayKit.setMode(uuid: uuid, spec: spec)
+    }
 }

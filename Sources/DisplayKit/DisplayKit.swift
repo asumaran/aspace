@@ -8,6 +8,7 @@ public enum DisplayKitError: Error, CustomStringConvertible {
     case displayNotFound(String)
     case beginConfigFailed(CGError)
     case operationFailed(String, CGError)
+    case modeNotAvailable(uuid: String, spec: String)
 
     public var description: String {
         switch self {
@@ -17,6 +18,72 @@ public enum DisplayKitError: Error, CustomStringConvertible {
             return "CGBeginDisplayConfiguration failed (CGError \(err.rawValue))"
         case .operationFailed(let op, let err):
             return "\(op) failed (CGError \(err.rawValue))"
+        case .modeNotAvailable(let uuid, let spec):
+            return "No \(spec) display mode available for \(uuid)"
+        }
+    }
+}
+
+/// A single display mode in value form. `pointWidth/Height` is the "looks
+/// like" size shown in System Settings; `pixelWidth/Height` is the framebuffer
+/// resolution. The `ref` handle is the live CoreGraphics mode used to apply it
+/// and is nil in synthetic (test) instances — the matcher never reads it.
+public struct DisplayMode: Equatable {
+    public let pointWidth: Int
+    public let pointHeight: Int
+    public let pixelWidth: Int
+    public let pixelHeight: Int
+    public let refreshHz: Double
+    public let isSafe: Bool
+    let ref: CGDisplayMode?
+
+    /// True for retina modes (framebuffer at least 2x the point size).
+    public var isHiDPI: Bool { pointWidth > 0 && pixelWidth / pointWidth >= 2 }
+
+    public init(pointWidth: Int, pointHeight: Int, pixelWidth: Int, pixelHeight: Int,
+                refreshHz: Double, isSafe: Bool) {
+        self.init(pointWidth: pointWidth, pointHeight: pointHeight,
+                  pixelWidth: pixelWidth, pixelHeight: pixelHeight,
+                  refreshHz: refreshHz, isSafe: isSafe, ref: nil)
+    }
+
+    init(pointWidth: Int, pointHeight: Int, pixelWidth: Int, pixelHeight: Int,
+         refreshHz: Double, isSafe: Bool, ref: CGDisplayMode?) {
+        self.pointWidth = pointWidth
+        self.pointHeight = pointHeight
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.refreshHz = refreshHz
+        self.isSafe = isSafe
+        self.ref = ref
+    }
+
+    public static func == (lhs: DisplayMode, rhs: DisplayMode) -> Bool {
+        lhs.pointWidth == rhs.pointWidth && lhs.pointHeight == rhs.pointHeight
+            && lhs.pixelWidth == rhs.pixelWidth && lhs.pixelHeight == rhs.pixelHeight
+            && lhs.refreshHz == rhs.refreshHz && lhs.isSafe == rhs.isSafe
+    }
+}
+
+/// Picks the concrete display mode that best satisfies a desired point size.
+/// A single point size (e.g. 2560x1440) maps to several modes that differ in
+/// scaling (HiDPI vs 1:1), refresh rate, and IOKit flags; this resolves that
+/// ambiguity deterministically. Pure and value-based so it is unit-testable
+/// without touching CoreGraphics.
+public enum DisplayModeMatcher {
+    /// Best match for `spec`, or nil if no mode has that point size.
+    /// Preference order: HiDPI over 1:1, higher refresh, then safe modes.
+    public static func best(for spec: AspaceConfig.ModeSpec, in modes: [DisplayMode]) -> DisplayMode? {
+        let candidates = modes.filter {
+            $0.pointWidth == spec.pointWidth && $0.pointHeight == spec.pointHeight
+        }
+        // `max(by:)` keeps the greatest element; the closure returns true when
+        // `a` is the worse (lesser) of the two.
+        return candidates.max { a, b in
+            if a.isHiDPI != b.isHiDPI { return !a.isHiDPI }
+            if a.refreshHz != b.refreshHz { return a.refreshHz < b.refreshHz }
+            if a.isSafe != b.isSafe { return !a.isSafe }
+            return false
         }
     }
 }
@@ -126,6 +193,69 @@ public enum DisplayKit {
                 }
             }
         }
+    }
+
+    // MARK: - Display modes
+
+    /// The mode a display is currently running, or nil if the UUID is not
+    /// online.
+    public static func currentMode(uuid: String) -> DisplayMode? {
+        guard let id = displayID(forUUID: uuid),
+              let mode = CGDisplayCopyDisplayMode(id) else { return nil }
+        return makeDisplayMode(mode)
+    }
+
+    /// Every mode the given display reports, in CoreGraphics' order. Empty if
+    /// the UUID is not currently online.
+    public static func modes(uuid: String) -> [DisplayMode] {
+        guard let id = displayID(forUUID: uuid) else { return [] }
+        return allModes(for: id)
+    }
+
+    /// Switches a display to the best mode matching the requested point size.
+    /// Throws `displayNotFound` if the UUID is offline and `modeNotAvailable`
+    /// if the panel reports no mode at that size. No-op if already there.
+    public static func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws {
+        guard let id = displayID(forUUID: uuid) else {
+            throw DisplayKitError.displayNotFound(uuid)
+        }
+        let modes = allModes(for: id)
+        guard let chosen = DisplayModeMatcher.best(for: spec, in: modes), let ref = chosen.ref else {
+            throw DisplayKitError.modeNotAvailable(uuid: uuid, spec: spec.stringValue)
+        }
+        if let current = CGDisplayCopyDisplayMode(id),
+           current.width == ref.width, current.height == ref.height,
+           current.pixelWidth == ref.pixelWidth, current.pixelHeight == ref.pixelHeight,
+           current.refreshRate == ref.refreshRate {
+            return
+        }
+        try inDisplayConfiguration { config in
+            let err = CGConfigureDisplayWithDisplayMode(config, id, ref, nil)
+            guard err == .success else {
+                throw DisplayKitError.operationFailed("CGConfigureDisplayWithDisplayMode", err)
+            }
+        }
+    }
+
+    /// kDisplayModeSafeFlag from <IOKit/graphics/IOGraphicsTypes.h>.
+    private static let safeModeFlag: UInt32 = 0x2
+
+    private static func makeDisplayMode(_ m: CGDisplayMode) -> DisplayMode {
+        DisplayMode(
+            pointWidth: m.width,
+            pointHeight: m.height,
+            pixelWidth: m.pixelWidth,
+            pixelHeight: m.pixelHeight,
+            refreshHz: m.refreshRate,
+            isSafe: (m.ioFlags & safeModeFlag) != 0,
+            ref: m
+        )
+    }
+
+    private static func allModes(for id: CGDirectDisplayID) -> [DisplayMode] {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue!] as CFDictionary
+        guard let raw = CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode] else { return [] }
+        return raw.map(makeDisplayMode)
     }
 
     // MARK: - Internals
