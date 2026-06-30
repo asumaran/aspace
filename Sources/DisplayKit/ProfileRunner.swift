@@ -99,20 +99,37 @@ public enum ProfileRunner {
 
         sleepFn(1.0)
 
-        if let mainUUID = mainUUID {
-            do {
-                try backend.setMain(uuid: mainUUID)
-            } catch DisplayKitError.displayNotFound {
-                warn("cannot set main display \(mainUUID): not currently connected (profile applied without setting main)")
-            } catch {
-                throw RunError.operation("main \(mainUUID)", error)
-            }
-            sleepFn(0.5)
-        }
+        // Resolve the main display from the pre-disable state: an explicit
+        // `main` wins; otherwise, if `toDisable` would leave exactly one display
+        // on, that sole survivor is promoted. Survivors are measured against
+        // what is actually online after the enable phase, so offline registry
+        // entries (ghosts that could not be enabled) never count.
+        let liveAfterEnable = Set(backend.listDisplays().map { $0.uuid.uppercased() })
+        let effectiveMain = mainUUID ?? soleSurvivingDisplay(online: liveAfterEnable, toDisable: toDisable)
 
+        // Disable the unwanted displays BEFORE setting main. Collapsing to the
+        // final topology first lets the surviving display settle into its own
+        // native mode; only then do we re-home its origin. Calling setMain while
+        // the other (e.g. retina) displays were still on can leave a lone TV in
+        // an inherited oversized scaled mode, rendering the desktop too large
+        // and cropped.
         for uuid in toDisable where known.contains(uuid) {
             do { try backend.setEnabled(uuid: uuid, enabled: false) }
             catch { throw RunError.operation("disable \(uuid)", error) }
+        }
+
+        // Now assign main / re-home the origin to (0,0). macOS makes a lone
+        // display main implicitly, but only `setMain` normalizes its origin, so
+        // the cursor and menu bar stay reachable.
+        if let effectiveMain {
+            sleepFn(0.5)
+            do {
+                try backend.setMain(uuid: effectiveMain)
+            } catch DisplayKitError.displayNotFound {
+                warn("cannot set main display \(effectiveMain): not currently connected (profile applied without setting main)")
+            } catch {
+                throw RunError.operation("main \(effectiveMain)", error)
+            }
         }
 
         AspaceLog.profile.info("Profile '\(name, privacy: .public)' applied")
@@ -130,6 +147,15 @@ public enum ProfileRunner {
     }
 
     // MARK: - Helpers
+
+    /// The single display that would remain enabled after `toDisable` is applied
+    /// to the currently-online set, or nil when zero or several survive. Lets a
+    /// single-display profile auto-assign main — and thus normalize the origin
+    /// to (0,0) — without the user declaring it. Both sets must be uppercased.
+    static func soleSurvivingDisplay(online: Set<String>, toDisable: Set<String>) -> String? {
+        let survivors = online.subtracting(toDisable)
+        return survivors.count == 1 ? survivors.first : nil
+    }
 
     private static func liveSleep(_ seconds: TimeInterval) {
         Thread.sleep(forTimeInterval: seconds)

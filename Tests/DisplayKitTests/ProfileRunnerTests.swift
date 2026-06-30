@@ -29,9 +29,91 @@ import Testing
         #expect(backend.ops.contains(.disable(STUDIO)))
         #expect(backend.ops.contains(.disable(DELL1)))
         #expect(backend.ops.contains(.disable(DELL2)))
+        // Even though the profile declares no `main`, the lone surviving display
+        // is promoted so its origin is normalized to (0,0).
+        #expect(backend.ops.contains(.setMain(LG_TV)),
+                "sole surviving display should auto-become main")
+    }
+
+    @Test func soleSurvivorBecomesMainEvenWhenSomeTargetsAreOffline() throws {
+        // Real-world shape: the profile would enable the TV plus a stale
+        // registry "ghost" that is no longer connected, while disabling the
+        // desk displays. Only the TV actually comes online, so it must be the
+        // one promoted to main.
+        let GHOST = "GHOST-UUID"
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2, LG_TV],
+            known:  [STUDIO, DELL1, DELL2, LG_TV, GHOST]
+        )
+        backend.enableFailures = [GHOST] // ghost cannot be enabled (not connected)
+
+        try ProfileRunner.run(
+            profile: "treadmill",
+            config: AspaceConfig(profiles: [
+                "treadmill": .init(disable: [STUDIO, DELL1, DELL2]),
+            ]),
+            backend: backend,
+            warn: { _ in }
+        )
+
+        #expect(backend.online == [LG_TV])
+        #expect(backend.ops.contains(.setMain(LG_TV)))
+    }
+
+    @Test func noAutoMainWhenMultipleDisplaysSurvive() throws {
+        // Disabling only the TV leaves three displays on and no `main` declared,
+        // so the runner must not pick one arbitrarily.
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2, LG_TV],
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        try ProfileRunner.run(
+            profile: "tvoff",
+            config: AspaceConfig(profiles: ["tvoff": .init(disable: [LG_TV])]),
+            backend: backend
+        )
+
+        #expect(backend.online == [STUDIO, DELL1, DELL2])
         #expect(!backend.ops.contains(where: {
             if case .setMain = $0 { return true } else { return false }
-        }), "treadmill profile has no main declared")
+        }), "no main should be set when several displays remain")
+    }
+
+    @Test func declaredMainWinsOverSoleSurvivor() throws {
+        // desk leaves three displays and declares STUDIO as main; the auto-main
+        // path must not override an explicit declaration.
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        try ProfileRunner.run(profile: "desk", config: standardConfig(), backend: backend)
+
+        #expect(backend.ops.contains(.setMain(STUDIO)))
+        #expect(!backend.ops.contains(.setMain(LG_TV)))
+    }
+
+    @Test func mainIsSetAfterDisablingOtherDisplays() throws {
+        // The lone survivor must be re-homed only once the other displays are
+        // off, so it settles into its own native mode first instead of
+        // inheriting a scaled mode from the displays being torn down.
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2, LG_TV],
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        try ProfileRunner.run(profile: "treadmill", config: standardConfig(), backend: backend)
+
+        let lastDisable = backend.ops.lastIndex {
+            if case .disable = $0 { return true } else { return false }
+        }
+        let setMain = backend.ops.firstIndex {
+            if case .setMain = $0 { return true } else { return false }
+        }
+        #expect(lastDisable != nil && setMain != nil)
+        #expect(lastDisable! < setMain!, "main must be set after every disable")
+    }
+
+    @Test func soleSurvivingDisplayHelper() {
+        #expect(ProfileRunner.soleSurvivingDisplay(online: ["A", "B"], toDisable: ["A"]) == "B")
+        #expect(ProfileRunner.soleSurvivingDisplay(online: ["A", "B"], toDisable: []) == nil)
+        #expect(ProfileRunner.soleSurvivingDisplay(online: ["A"], toDisable: ["A"]) == nil)
+        #expect(ProfileRunner.soleSurvivingDisplay(online: [], toDisable: []) == nil)
     }
 
     @Test func deskProfileSetsMainAndDisablesTV() throws {
