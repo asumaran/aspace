@@ -15,5 +15,13 @@
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/asumaran/aspace/releases/download/v0.1.6/Aspace-v0.1.6.app.zip" type="application/octet-stream" sparkle:edSignature="zgQmOSrKZeIyKNrn/LuDsbj5uicex9t7AdnB46bI40EHcmTMgsgV10MOXANo6O0osxXl46jYIJzjGkxFHcwRDw==" length="1123710" />
         </item>
+            <item>
+            <title>v0.2.0</title>
+            <pubDate>Tue, 30 Jun 2026 19:12:24 +0000</pubDate>
+            <sparkle:version>0.2.0</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/asumaran/aspace/releases/download/v0.2.0/Aspace-v0.2.0.app.zip" type="application/octet-stream" sparkle:edSignature="VfKwYWAf7o8iRVtFSMwaRSRNIXSExVTFvv0vCPXDT4/wtKvRtCBPBq4p6NH25muX9AAAvRXT7g3y7jzYxZfHBA==" length="1157777" />
+        </item>
     </channel>
 </rss>
