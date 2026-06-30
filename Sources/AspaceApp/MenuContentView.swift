@@ -44,9 +44,10 @@ struct MenuContentView: View {
 
         Divider()
 
-        Text("Displays")
-        ForEach(model.displays, id: \.uuid) { display in
-            Text(displayLabel(display))
+        Menu("Displays") {
+            ForEach(model.displayRows, id: \.uuid) { row in
+                Text(displayLabel(row))
+            }
         }
 
         Divider()
@@ -80,9 +81,9 @@ struct MenuContentView: View {
         return prefix + name
     }
 
-    private func displayLabel(_ display: DisplayInfo) -> String {
-        let mark = display.isEnabled ? "●" : "○"
-        let main = display.isMain ? " (main)" : ""
-        return "  \(mark) \(display.name)\(main)"
+    private func displayLabel(_ row: DisplayKit.DisplayStatusRow) -> String {
+        let mark = row.isActive ? "🟢" : "⚪️"
+        let main = row.isMain ? " (main)" : ""
+        return "\(mark) \(row.name)\(main)"
     }
 }

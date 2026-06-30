@@ -10,6 +10,9 @@ import DisplayKit
 @MainActor
 final class AspaceModel: ObservableObject {
     @Published private(set) var displays: [DisplayInfo] = []
+    /// Online displays plus config-referenced displays that are offline now,
+    /// for the menu's "Displays" section. Derived from `displays` + `config`.
+    @Published private(set) var displayRows: [DisplayKit.DisplayStatusRow] = []
     @Published private(set) var config: AspaceConfig = AspaceConfig(profiles: [:])
     @Published private(set) var activeProfile: String?
     @Published private(set) var activeResolution: String?
@@ -67,6 +70,7 @@ final class AspaceModel: ObservableObject {
     func refresh() {
         config = AspaceConfig.loadOrEmpty()
         displays = DisplayKit.listDisplays()
+        displayRows = DisplayKit.displayStatus(online: displays, config: config)
         activeProfile = Self.detectActiveProfile(displays: displays, config: config)
         activeResolution = Self.detectActiveResolution(displays: displays, config: config)
         cliVersion = Self.detectCLIVersion()
