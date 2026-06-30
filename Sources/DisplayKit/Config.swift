@@ -173,6 +173,23 @@ public struct AspaceConfig: Codable {
         (try? load()) ?? AspaceConfig(profiles: [:])
     }
 
+    /// Every display UUID this config references — across profiles (`disable`
+    /// targets and `main`) and resolution presets. Lets callers surface
+    /// known-but-offline displays the user actually manages, without pulling in
+    /// unrelated entries from the persistent registry. Uppercased so matching is
+    /// case-insensitive.
+    public var referencedDisplayUUIDs: Set<String> {
+        var uuids = Set<String>()
+        for profile in profiles.values {
+            for uuid in profile.disable { uuids.insert(uuid.uppercased()) }
+            if let main = profile.main { uuids.insert(main.uppercased()) }
+        }
+        for preset in resolutions.values {
+            for uuid in preset.keys { uuids.insert(uuid.uppercased()) }
+        }
+        return uuids
+    }
+
     /// Writes the config to `storeURL`, creating the parent directory if
     /// needed. Pretty-printed with sorted keys for stable, hand-editable diffs.
     public func save() throws {
