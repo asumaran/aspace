@@ -12,6 +12,7 @@ final class AspaceModel: ObservableObject {
     @Published private(set) var displays: [DisplayInfo] = []
     @Published private(set) var config: AspaceConfig = AspaceConfig(profiles: [:])
     @Published private(set) var activeProfile: String?
+    @Published private(set) var activeResolution: String?
     @Published private(set) var cliVersion: String?
 
     init() {
@@ -43,6 +44,19 @@ final class AspaceModel: ObservableObject {
         ProfileRunner.availableProfileNames(config: config)
     }
 
+    var availableResolutionNames: [String] {
+        ResolutionRunner.availablePresetNames(config: config)
+    }
+
+    /// A preset applies when at least one of its displays is currently
+    /// connected. The menu dims presets that target only offline displays
+    /// (e.g. the desk presets while on the treadmill profile), since applying
+    /// them would be a no-op.
+    func isResolutionApplicable(_ name: String) -> Bool {
+        let online = Set(displays.filter { $0.isEnabled }.map { $0.uuid })
+        return ResolutionState.applicablePresets(online: online, in: config.resolutions).contains(name)
+    }
+
     var versionMismatchMessage: String? {
         guard let cli = cliVersion, cli != AspaceVersion.current else { return nil }
         return "CLI version mismatch — click for details"
@@ -54,6 +68,7 @@ final class AspaceModel: ObservableObject {
         config = AspaceConfig.loadOrEmpty()
         displays = DisplayKit.listDisplays()
         activeProfile = Self.detectActiveProfile(displays: displays, config: config)
+        activeResolution = Self.detectActiveResolution(displays: displays, config: config)
         cliVersion = Self.detectCLIVersion()
         AspaceLog.app.debug("refresh: \(self.displays.count) displays, profile=\(self.activeProfile ?? "custom", privacy: .public)")
     }
@@ -66,6 +81,17 @@ final class AspaceModel: ObservableObject {
         }
         // The reconfig callback will fire and refresh, but call it explicitly
         // in case the callback is delayed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.refresh()
+        }
+    }
+
+    func applyResolution(_ name: String) {
+        do {
+            try ResolutionRunner.run(preset: name, config: config)
+        } catch {
+            presentError("Failed to apply resolution preset '\(name)': \(error)")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.refresh()
         }
@@ -139,6 +165,19 @@ final class AspaceModel: ObservableObject {
             return AspaceConfig.allProfileName
         }
         return nil
+    }
+
+    /// A preset is active when every display it lists that is currently online
+    /// is already at the preset's resolution. Offline displays in the preset
+    /// are ignored so a preset still reads as active with a monitor unplugged.
+    private static func detectActiveResolution(displays: [DisplayInfo], config: AspaceConfig) -> String? {
+        var current: [String: AspaceConfig.ModeSpec] = [:]
+        for d in displays where d.isEnabled {
+            if let m = DisplayKit.currentMode(uuid: d.uuid) {
+                current[d.uuid] = AspaceConfig.ModeSpec(pointWidth: m.pointWidth, pointHeight: m.pointHeight)
+            }
+        }
+        return ResolutionState.activePreset(current: current, in: config.resolutions)
     }
 
     /// Probe the `aspace` CLI in the usual install paths and ask for its

@@ -31,6 +31,17 @@ struct MenuContentView: View {
             }
         }
 
+        if !model.availableResolutionNames.isEmpty {
+            Divider()
+            Text("Resolution: \(model.activeResolution ?? "custom")")
+            ForEach(model.availableResolutionNames, id: \.self) { name in
+                Button(resolutionLabel(name)) {
+                    model.applyResolution(name)
+                }
+                .disabled(!model.isResolutionApplicable(name))
+            }
+        }
+
         Divider()
 
         Text("Displays")
@@ -62,6 +73,11 @@ struct MenuContentView: View {
             ? "Reconnect all displays"
             : "Switch to \(name)"
         return prefix + display
+    }
+
+    private func resolutionLabel(_ name: String) -> String {
+        let prefix = (model.activeResolution == name) ? "✓ " : "   "
+        return prefix + name
     }
 
     private func displayLabel(_ display: DisplayInfo) -> String {
