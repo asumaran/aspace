@@ -227,6 +227,34 @@ public enum DisplayKit {
         )
     }
 
+    /// Name of the profile whose topology matches `online`, or nil ("custom")
+    /// when none does. The comparison universe is the union of every profile's
+    /// `disable` list — the displays profiles actually toggle — NOT every UUID
+    /// the registry has ever seen. That way a display that is offline but
+    /// unmanaged (a stale registry "ghost", or one referenced only by a
+    /// resolution preset) can't prevent a match. A profile matches when the
+    /// universe displays that are offline are exactly its `disable` set; the
+    /// built-in "all" matches when every universe display is online. Pure.
+    public static func activeProfileName(online: Set<String>, config: AspaceConfig) -> String? {
+        var universe = Set<String>()
+        for profile in config.profiles.values {
+            for uuid in profile.disable { universe.insert(uuid.uppercased()) }
+        }
+        guard !universe.isEmpty else { return nil }
+
+        let onlineUpper = Set(online.map { $0.uppercased() })
+        let offline = universe.subtracting(onlineUpper)
+
+        for (name, profile) in config.profiles {
+            let disabled = Set(profile.disable.map { $0.uppercased() })
+            if disabled == offline { return name }
+        }
+        if offline.isEmpty {
+            return AspaceConfig.allProfileName
+        }
+        return nil
+    }
+
     /// All UUIDs aspace has ever observed (currently online plus anything
     /// cached from a previous session). Useful for callers that need to
     /// reason about disabled / disconnected displays.

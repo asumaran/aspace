@@ -153,22 +153,12 @@ final class AspaceModel: ObservableObject {
     }
 
     /// A profile matches when the displays it lists as `disable` are exactly
-    /// the ones currently offline / disabled. The built-in "all" matches
-    /// when nothing known is offline.
+    /// the ones currently offline / disabled. The built-in "all" matches when
+    /// every managed display is online. Delegates to the tested pure helper,
+    /// which ignores unmanaged registry "ghosts" so they can't force "custom".
     private static func detectActiveProfile(displays: [DisplayInfo], config: AspaceConfig) -> String? {
-        let known = DisplayKit.allKnownUUIDs()
         let online = Set(displays.map { $0.uuid.uppercased() })
-        let offline = known.subtracting(online)
-
-        for (name, profile) in config.profiles {
-            let configured = Set(profile.disable.map { $0.uppercased() }).intersection(known)
-            if configured == offline { return name }
-        }
-
-        if offline.isEmpty && !known.isEmpty {
-            return AspaceConfig.allProfileName
-        }
-        return nil
+        return DisplayKit.activeProfileName(online: online, config: config)
     }
 
     /// A preset is active when every display it lists that is currently online
