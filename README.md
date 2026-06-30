@@ -139,9 +139,13 @@ Once the config is in place, `aspace profile <name>` applies the layout.
 The menu bar app reads the same config on every menu open and exposes one
 item per profile plus a built-in "Reconnect all displays".
 
-`main` is optional. When omitted, macOS keeps the previous main display
-where possible — declare `main` explicitly only when the profile has 2+
-enabled displays and you care which one is the primary.
+`main` is optional. When a profile leaves a single display enabled, aspace
+automatically makes that lone display the main — which also re-homes its
+origin to (0, 0), so the cursor and menu bar stay reachable (otherwise a
+single-display profile can strand the pointer in the old multi-display
+coordinate space). When two or more displays remain and `main` is omitted,
+macOS keeps the previous main where possible; declare `main` explicitly only
+when you care which one is the primary.
 
 ### Resolution presets
 
