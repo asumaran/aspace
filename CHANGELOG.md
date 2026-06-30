@@ -6,6 +6,17 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-30
+
+### Fixed
+
+- Sparkle no longer offers a spurious "update available" to the version already
+  installed. The app bundle stamped its `CFBundleVersion` with the `v`-prefixed
+  `git describe` string (e.g. `v0.2.0`) while the appcast publishes the version
+  without the prefix (`0.2.0`); Sparkle read the two as different and flagged an
+  update. The build now strips the leading `v` from `CFBundleVersion` /
+  `CFBundleShortVersionString` so they match the appcast.
+
 ## [0.2.0] - 2026-06-30
 
 ### Added
