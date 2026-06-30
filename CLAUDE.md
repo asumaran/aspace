@@ -64,6 +64,26 @@ after any such change and after a release. (The CLI at `~/.local/bin/aspace` is
 likewise stale until reinstalled, but a fresh `.build/debug/aspace` always
 reflects the working tree for quick checks.)
 
+### Getting onto a newly published release — order to suggest
+
+1. **In-app Sparkle auto-update first** ("Check for Updates"). This is the
+   intended path and works *only* on a build installed from a published release:
+   the published `.app.zip` carries `SUPublicEDKey` (the EdDSA trust anchor) and
+   a `CFBundleVersion` matching the appcast.
+2. **Install the published artifact** if auto-update can't run — download the
+   release `Aspace-vX.Y.Z.app.zip` and replace `/Applications/Aspace.app`. This
+   also restores auto-update capability for future releases.
+3. **`make install` from source** as a last resort / for local dev only.
+
+Important caveat: a `make install` (or `make app`) build is ad-hoc signed and
+has **no `SUPublicEDKey`** (the Sparkle public key is injected from a CI secret,
+absent locally). Such a build finds updates via `SUFeedURL` and shows the
+prompt, but Sparkle cannot verify the signed download and the install fails. So
+on a locally-built app, do not suggest auto-update as actionable — point to
+option 2. Verify with:
+`/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" /Applications/Aspace.app/Contents/Info.plist`
+(absent ⇒ auto-update won't complete).
+
 ## Verifying changes
 
 - `DisplayKit` / CLI: add or run unit tests, and exercise the live CLI
