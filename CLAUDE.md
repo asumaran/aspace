@@ -100,9 +100,21 @@ option 2. Verify with:
 
 ## Conventions
 
-- Commit messages: Conventional Commits (`type(scope): description`).
-- Keep docs in sync when adding commands/config: `README.md`,
-  `config.example.json`, and `CHANGELOG.md` (`[Unreleased]`).
+- Commit messages: Conventional Commits (`type(scope): description`). They are
+  the source of the changelog (see Releasing), so keep subjects clear.
+- Keep docs in sync when adding commands/config: `README.md` and
+  `config.example.json`. Do **not** hand-edit `CHANGELOG.md` — `Scripts/release.sh`
+  generates each version's entry from the commit subjects since the last tag.
 - Do not commit or push unless asked.
 - After changes that affect the app, offer to reinstall it — see "Installing /
   reinstalling the app".
+
+## Releasing
+
+`Scripts/release.sh X.Y.Z` is the whole process: it gates on a clean `main` +
+`make test` + `make app`, generates the `CHANGELOG.md` section from the commit
+subjects since the previous tag (filtering CI's `chore(release)`/`chore(appcast)`
+commits), commits `chore(release): vX.Y.Z`, tags, and pushes. Pushing the tag
+triggers `.github/workflows/release.yml` (build, sign, notarize, Sparkle appcast,
+GitHub Release). Use `--dry-run` to preview, `--no-push` to stop before pushing.
+Do not assemble releases by hand or hand-write the changelog.

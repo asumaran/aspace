@@ -1,30 +1,9 @@
 # Changelog
 
-All notable changes to this project are documented here. The format is based
-on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
+All notable changes to this project are documented here. Newer entries are
+generated from the commit log by `Scripts/release.sh`; entries through v0.2.2
+follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project
 aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Fixed
-
-- The menu no longer shows `Profile: custom` while a configured profile is
-  actually active. Active-profile detection compared the offline displays
-  against each profile's `disable` list using every UUID the registry had ever
-  seen, so a stale or unmanaged display (a registry "ghost") that is always
-  offline prevented any exact match. Detection now considers only the displays
-  the profiles actually toggle.
-
-### Added
-
-- A profile that leaves a single display enabled now promotes that lone
-  display to main automatically, even when the profile declares no `main`.
-  Setting main also re-homes the display's origin to (0, 0), so the cursor and
-  menu bar remain reachable. Previously a single-display profile without an
-  explicit `main` (e.g. a `treadmill` profile that disables every desk monitor)
-  could leave the surviving display in the old multi-display coordinate space,
-  stranding the pointer off-screen. Profiles that leave two or more displays
-  on are unchanged: declare `main` if you care which is primary.
 
 ## [0.2.2] - 2026-06-30
 

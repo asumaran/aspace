@@ -298,7 +298,19 @@ should update the menu on its own.
 
 ## Releasing
 
-Tagging `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`, which
+Cut a release with the helper script — it is the whole process:
+
+```bash
+Scripts/release.sh 0.3.0            # gate, generate CHANGELOG, commit, tag, push
+Scripts/release.sh 0.3.0 --dry-run  # preview the version + CHANGELOG, change nothing
+```
+
+It refuses to run unless you are on a clean `main`, runs `make test` and
+`make app` as a gate, generates the CHANGELOG section from the commit subjects
+since the previous tag (no hand-editing), then commits `chore(release): vX.Y.Z`,
+tags, and pushes.
+
+Pushing the tag `vX.Y.Z` triggers `.github/workflows/release.yml`, which
 builds, packages, and publishes the CLI tarball + `.app.zip` to a new
 GitHub Release. The workflow looks for these optional repo secrets and
 upgrades the release accordingly:
