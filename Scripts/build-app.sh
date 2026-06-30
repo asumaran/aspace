@@ -24,6 +24,13 @@ if [[ -z "${VERSION:-}" ]]; then
   VERSION="$(git describe --tags --dirty 2>/dev/null || echo dev)"
 fi
 
+# CFBundle* / Sparkle compare versions as plain strings, and the appcast is
+# generated with the leading "v" stripped (release.yml does `lstrip("v")`).
+# Strip it here too so the bundle's CFBundleVersion matches the appcast's
+# sparkle:version exactly; otherwise Sparkle reads "0.2.0" as newer than the
+# installed "v0.2.0" and offers a spurious update to the same release.
+BUNDLE_VERSION="${VERSION#v}"
+
 # Stamp Sources/DisplayKit/Version.swift, restoring it after the build so
 # the repo stays clean. Backup lives outside Sources/ so SPM doesn't warn
 # about an unhandled file.
@@ -100,9 +107,9 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
+    <string>${BUNDLE_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
+    <string>${BUNDLE_VERSION}</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
