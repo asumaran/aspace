@@ -5,6 +5,14 @@ generated from the commit log by `Scripts/release.sh`; entries through v0.2.2
 follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project
 aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.2.3 (2026-06-30)
+
+* docs: drive releases and the changelog from Scripts/release.sh (13bba7e)
+* build(release): add Scripts/release.sh to automate cutting releases (7fb2897)
+* docs: auto-main behavior and the active-profile detection fix (cd40d0a)
+* fix(menu): ignore registry ghosts when detecting the active profile (37e2c89)
+* feat(profile): auto-set main on the sole surviving display (ada1250)
+
 ## [0.2.2] - 2026-06-30
 
 ### Added
