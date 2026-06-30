@@ -12,5 +12,15 @@
       ],
       "main": "REPLACE-WITH-DESK-MAIN-UUID"
     }
+  },
+  "resolutions": {
+    "cozy": {
+      "REPLACE-WITH-DESK-MAIN-UUID": "2560x1440",
+      "REPLACE-WITH-DESK-MONITOR-UUID-2": "2560x1440"
+    },
+    "spacious": {
+      "REPLACE-WITH-DESK-MAIN-UUID": "3200x1800",
+      "REPLACE-WITH-DESK-MONITOR-UUID-2": "3200x1800"
+    }
   }
 }

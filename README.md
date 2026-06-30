@@ -73,11 +73,16 @@ Other Makefile targets: `make` (build only), `make test`, `make uninstall`,
 
 ```bash
 aspace list                           # show every display
+aspace modes [<uuid>]                 # list a display's supported resolutions
 aspace disable <uuid>                 # take a display offline
 aspace enable  <uuid>                 # bring it back
 aspace main    <uuid>                 # make it the primary display
-aspace profile <name>                 # apply a profile (see Configuration)
+aspace profile <name>                 # apply a profile (topology: on/off + main)
 aspace profiles                       # list available profile names
+aspace capture <name>                 # save the current topology as a profile
+aspace resolution <name>              # apply a resolution preset (scaling only)
+aspace resolutions                    # list available resolution preset names
+aspace capture-resolution <name>      # save current resolutions as a preset
 aspace is-enabled <uuid>              # "on" or "off"
 aspace is-main    <uuid>              # "true" or "false"
 ```
@@ -89,11 +94,14 @@ handy as a "back to normal" shortcut.
 `aspace list` example output:
 
 ```
-UUID                                   ID       ENABLED  MAIN   NAME
-A1B2C3D4-1111-2222-3333-444455556666   1        on       true   Built-in Retina Display
-B2C3D4E5-2222-3333-4444-555566667777   2        on       false  External 4K Display
-C3D4E5F6-3333-4444-5555-666677778888   3        on       false  Secondary Monitor
+UUID                                   ID       ENABLED  MAIN   RESOLUTION   NAME
+A1B2C3D4-1111-2222-3333-444455556666   1        on       true   1512x982     Built-in Retina Display
+B2C3D4E5-2222-3333-4444-555566667777   2        on       false  2560x1440    External 4K Display
+C3D4E5F6-3333-4444-5555-666677778888   3        on       false  3200x1800    Secondary Monitor
 ```
+
+The `RESOLUTION` column shows each display's current "looks like" size (the
+HiDPI point size from System Settings, not the raw pixel count).
 
 ## Configuration
 
@@ -114,6 +122,10 @@ would leave zero displays enabled, aspace refuses to apply it.
       "disable": ["C3D4E5F6-..."],
       "main":    "B2C3D4E5-..."
     }
+  },
+  "resolutions": {
+    "cozy":     { "B2C3D4E5-...": "2560x1440", "A1B2C3D4-...": "2560x1440" },
+    "spacious": { "B2C3D4E5-...": "3200x1800", "A1B2C3D4-...": "3200x1800" }
   }
 }
 ```
@@ -131,6 +143,46 @@ item per profile plus a built-in "Reconnect all displays".
 where possible — declare `main` explicitly only when the profile has 2+
 enabled displays and you care which one is the primary.
 
+### Resolution presets
+
+`resolutions` is a separate axis from profiles. A preset maps display UUIDs to
+a target resolution and is applied with `aspace resolution <name>` (or from the
+menu bar) **without touching connections or the main display** — so you can
+flip the same set of monitors between, say, a `cozy` larger-text layout in the
+morning and a `spacious` one during the day:
+
+```bash
+aspace resolution cozy       # bigger text
+aspace resolution spacious   # more screen real estate
+```
+
+Because it only changes scaling on already-connected displays, switching is
+fast and flicker-free — handy to bind to a keyboard shortcut, a Shortcut, or a
+`launchd`/`cron` job that flips it on a schedule.
+
+The value is the "looks like" point size from System Settings (e.g.
+`"2560x1440"`), not the raw pixel count. A single point size maps to several
+underlying modes (HiDPI vs 1:1, different refresh rates); aspace resolves that
+by preferring the HiDPI mode at the highest refresh rate. A resolution a
+display doesn't support, or a display that's currently off, is skipped with a
+warning rather than applied. Run `aspace modes <uuid>` to see the point sizes a
+display actually supports before writing a preset.
+
+### Capturing the current state
+
+Rather than hand-writing UUIDs, arrange things the way you want in System
+Settings and snapshot them:
+
+```bash
+aspace capture workstation         # topology: main + which displays are off
+aspace capture-resolution spacious # current resolution of every on display
+```
+
+`capture` records the main display and lists any known-but-disconnected
+displays under the profile's `disable`. `capture-resolution` records each on
+display's current resolution as a preset. Both overwrite an entry of the same
+name and leave the rest of the config untouched.
+
 ## Menu bar app
 
 `Aspace.app` runs as a menu bar accessory (no Dock icon). The icon reflects
@@ -147,6 +199,10 @@ state, or jump to the config folder.
 - **Listing / detection**: only public CoreGraphics + `NSScreen` APIs.
 - **Setting the main display**: public `CGConfigureDisplayOrigin`, by shifting
   every display so the chosen one lands at (0, 0).
+- **Resolutions**: public `CGDisplayCopyAllDisplayModes` /
+  `CGConfigureDisplayWithDisplayMode`. Only modes the panel actually reports
+  can be applied, so an unsupported resolution is impossible to force — it's
+  skipped with a warning.
 - **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol
   (CoreGraphics, re-exported from `SkyLight.framework`). Apple has shipped
   it stable for years, but it's undocumented and could disappear in a
@@ -164,6 +220,73 @@ If a cached entry no longer maps to a real display (transient AirPlay,
 Sidecar, briefly-opened laptop lid, etc.), the runner skips it with a
 warning instead of aborting; cleanup happens manually via
 `aspace prune [days]`.
+
+## Development
+
+### Layout
+
+Three Swift targets:
+
+- `DisplayKit` — the library where all the real logic lives: config parsing,
+  profile/resolution application, display-mode selection. It talks to
+  CoreGraphics through a small `DisplayBackend` seam, so the decision-making
+  parts are pure and value-based.
+- `AspaceCLI` (the `aspace` binary) and `AspaceApp` (the menu bar app) — thin
+  shells that parse input / render the menu and call into `DisplayKit`.
+
+When adding behavior, put the logic in `DisplayKit` (with tests) and keep the
+CLI/app as glue. The existing pure helpers — `ProfileRunner`,
+`ResolutionRunner`, `ResolutionState`, `DisplayModeMatcher`,
+`DisplayModeReport`, `ProfileCapture` — follow that pattern.
+
+### Unit tests
+
+```bash
+make test        # or: swift test
+```
+
+Tests live in `Tests/DisplayKitTests` and use
+[swift-testing](https://github.com/swiftlang/swift-testing) (`@Suite`/`@Test`/
+`#expect`). They never touch real displays: `ProfileRunner` and
+`ResolutionRunner` run against a `FakeBackend` that records the operations they
+issue, and the mode-selection / state helpers are exercised with synthetic
+`DisplayMode` values. Mirror that when adding tests — drive the seam, don't
+poke CoreGraphics.
+
+### Testing the CLI
+
+```bash
+swift build                       # debug build at .build/debug/aspace
+.build/debug/aspace list
+.build/debug/aspace modes <uuid>
+```
+
+CLI commands act on live displays, so they double as a manual integration
+check (`list`, `modes`, `resolution <name>`, `profile <name>`).
+
+### Testing the menu bar app
+
+`AspaceApp` has **no unit-test target** — its logic is pushed down into
+`DisplayKit` (e.g. `ResolutionState` backs the menu's active-preset checkmark
+and the dimming of presets that don't apply), which *is* tested. The app shell
+itself is verified by building and running it:
+
+```bash
+make app                          # builds CLI + build/Aspace.app
+pkill -x Aspace 2>/dev/null       # stop any running instance first
+open build/Aspace.app             # run the freshly built bundle (no install)
+```
+
+`open build/Aspace.app` runs the local build without replacing an installed
+copy in `/Applications`; quitting it and relaunching the installed app reverts.
+Use `make install` only when you want the new build to become the installed one
+(it stops the running instance, then copies the CLI and app into place).
+
+Manual smoke test after an app change: open the menu, switch between profiles
+and resolution presets, confirm the `✓` tracks the active preset and that
+presets whose displays are all offline appear dimmed. The app listens for
+display-reconfiguration events, so changing resolution by any other means
+should update the menu on its own.
 
 ## Releasing
 
