@@ -191,8 +191,12 @@ enabled (the built-in `all` profile), and `rectangle.on.rectangle.slash`
 when the live layout matches no configured profile. A few well-known
 profile names get themed icons baked in (`treadmill` → `figure.walk`,
 `desk` → `display`); any other name falls back to the generic icon. Open
-the menu to switch profiles, inspect each display's connection / main
-state, or jump to the config folder.
+the menu to switch profiles or jump to the config folder. A `Displays`
+submenu lists each screen with a colored status dot — 🟢 active, ⚪️ inactive
+or offline — and the main display is tagged `(main)`. It also surfaces
+displays referenced by your config (a profile's `disable`/`main`, or a
+resolution preset) that are disconnected right now, so a powered-off monitor
+you manage still appears instead of vanishing.
 
 ## How it works (and how it might break)
 

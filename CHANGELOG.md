@@ -6,6 +6,21 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The menu bar app surfaces **offline displays** in the `Displays` list: a
+  screen that is disconnected or powered off but referenced by your config
+  (a profile's `disable`/`main`, or a resolution preset) now appears with a
+  ⚪️ marker instead of silently vanishing. Displays the registry has only seen
+  incidentally, or with no recorded name, are omitted to avoid stale "ghost"
+  rows.
+
+### Changed
+
+- The menu's display list moved into a `Displays` submenu and now shows status
+  with a colored dot — 🟢 active, ⚪️ inactive/offline — replacing the previous
+  monochrome `●`/`○` text.
+
 ## [0.2.1] - 2026-06-30
 
 ### Fixed
