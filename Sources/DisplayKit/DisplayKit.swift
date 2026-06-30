@@ -127,6 +127,106 @@ public enum DisplayKit {
         return listDisplays().first { $0.uuid.uppercased() == target }
     }
 
+    // MARK: - Display status (menu)
+
+    /// One row of the menu's "Displays" section: a display that is either online
+    /// now or known-but-disconnected. `🟢`/`⚪️` in the UI map to `isActive`.
+    public struct DisplayStatusRow: Equatable {
+        public enum Connection: Equatable {
+            /// Reported online by CoreGraphics. `isEnabled` is false for the rare
+            /// online-but-inactive case (e.g. mirrored), which still shows ⚪️.
+            case online(isEnabled: Bool, isMain: Bool)
+            /// Not online now; surfaced from the registry because the user's
+            /// config references it.
+            case offline
+        }
+
+        public let uuid: String
+        public let name: String
+        public let connection: Connection
+
+        public init(uuid: String, name: String, connection: Connection) {
+            self.uuid = uuid
+            self.name = name
+            self.connection = connection
+        }
+
+        /// True only for an online display that is actively driving pixels.
+        public var isActive: Bool {
+            if case .online(let isEnabled, _) = connection { return isEnabled }
+            return false
+        }
+
+        public var isMain: Bool {
+            if case .online(_, let isMain) = connection { return isMain }
+            return false
+        }
+
+        public var isOnline: Bool {
+            if case .online = connection { return true }
+            return false
+        }
+    }
+
+    /// Builds the menu's "Displays" list: every currently-online display, plus
+    /// any display referenced by the user's config that is offline right now, so
+    /// known-but-disconnected screens still appear. Offline rows are named from
+    /// the registry; an offline display with no recorded name is skipped (we'd
+    /// have nothing meaningful to show). Order: online first (main, then by
+    /// name), then offline by name. Pure — callers supply the inputs.
+    public static func displayStatusRows(
+        online: [DisplayInfo],
+        configuredUUIDs: [String],
+        registryNames: [String: String]
+    ) -> [DisplayStatusRow] {
+        let onlineUUIDs = Set(online.map { $0.uuid.uppercased() })
+
+        let onlineRows = online.map { d in
+            DisplayStatusRow(
+                uuid: d.uuid,
+                name: d.name,
+                connection: .online(isEnabled: d.isEnabled, isMain: d.isMain)
+            )
+        }
+
+        var seen = Set<String>()
+        var offlineRows: [DisplayStatusRow] = []
+        for raw in configuredUUIDs {
+            let key = raw.uppercased()
+            if onlineUUIDs.contains(key) { continue }
+            guard seen.insert(key).inserted else { continue }
+            guard let name = registryNames[key], !name.isEmpty else { continue }
+            offlineRows.append(DisplayStatusRow(uuid: key, name: name, connection: .offline))
+        }
+
+        let sortedOnline = onlineRows.sorted { a, b in
+            if a.isMain != b.isMain { return a.isMain }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+        let sortedOffline = offlineRows.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        return sortedOnline + sortedOffline
+    }
+
+    /// Convenience wrapper over `displayStatusRows` that pulls names from the
+    /// persistent registry. Takes an already-fetched `online` list to avoid a
+    /// second CoreGraphics round-trip.
+    public static func displayStatus(online: [DisplayInfo], config: AspaceConfig) -> [DisplayStatusRow] {
+        let registry = DisplayRegistry.load()
+        var registryNames: [String: String] = [:]
+        for (uuid, entry) in registry.entries {
+            if let name = entry.name, !name.isEmpty {
+                registryNames[uuid.uppercased()] = name
+            }
+        }
+        return displayStatusRows(
+            online: online,
+            configuredUUIDs: Array(config.referencedDisplayUUIDs),
+            registryNames: registryNames
+        )
+    }
+
     /// All UUIDs aspace has ever observed (currently online plus anything
     /// cached from a previous session). Useful for callers that need to
     /// reason about disabled / disconnected displays.
