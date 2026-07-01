@@ -317,6 +317,48 @@ import Testing
         #expect(warnings.contains(where: { $0.contains("cannot set main") }))
     }
 
+    @Test func disableFailurePropagates() {
+        // A disable that fails is a real CG error, not a stale-cache skip, so it
+        // must abort the switch. Locks the current behavior before the
+        // enable/disable batching refactor changes how disables are applied.
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        backend.disableFailures = [LG_TV]
+
+        #expect(throws: ProfileRunner.RunError.self) {
+            try ProfileRunner.run(profile: "desk", config: standardConfig(), backend: backend)
+        }
+    }
+
+    @Test func enablesHappenBeforeDisables() throws {
+        // The runner brings the new topology up first, then tears down the
+        // unwanted displays — so the session is never momentarily left with
+        // nothing enabled. Batching enables and disables must preserve this
+        // two-phase order.
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        try ProfileRunner.run(profile: "desk", config: standardConfig(), backend: backend)
+
+        let lastEnable = backend.ops.lastIndex { if case .enable = $0 { return true } else { return false } }
+        let firstDisable = backend.ops.firstIndex { if case .disable = $0 { return true } else { return false } }
+        #expect(lastEnable != nil && firstDisable != nil)
+        #expect(lastEnable! < firstDisable!, "all enables must precede any disable")
+    }
+
+    @Test func batchedEnableSkipsGhostAndEnablesTheRest() throws {
+        // Coming from the TV with the desk displays cached: one of them is a
+        // stale ghost that can't be enabled. Batching must not let that one
+        // failure sink the others — the reachable displays still come up and
+        // only the ghost is skipped.
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        backend.enableFailures = [DELL2]   // ghost among the enables
+
+        var warnings: [String] = []
+        try ProfileRunner.run(profile: "desk", config: standardConfig(), backend: backend, warn: { warnings.append($0) })
+
+        #expect(backend.online == [STUDIO, DELL1], "the reachable displays are enabled despite the ghost")
+        #expect(!backend.ops.contains(.enable(DELL2)))
+        #expect(warnings.contains(where: { $0.contains(DELL2) && $0.contains("not currently connected") }))
+    }
+
     @Test func liveDisplayEnableFailurePropagates() {
         // Studio is online but enable fails — that's a real bug, not stale
         // cache, so it must throw.

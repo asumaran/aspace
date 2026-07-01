@@ -15,6 +15,7 @@ final class FakeBackend: DisplayBackend {
 
     enum Failure: Error, Equatable {
         case enableShouldFail(String)
+        case disableShouldFail(String)
         case mainShouldFail(String)
     }
 
@@ -26,6 +27,10 @@ final class FakeBackend: DisplayBackend {
 
     /// UUIDs whose enable call should throw (simulates stale cached id).
     var enableFailures: Set<String> = []
+
+    /// UUIDs whose disable call should throw (simulates a CG reconfiguration
+    /// error while tearing a display down).
+    var disableFailures: Set<String> = []
 
     /// If non-nil, setMain throws this error for the given UUID.
     var mainFailure: (uuid: String, error: Error)?
@@ -84,8 +89,11 @@ final class FakeBackend: DisplayBackend {
 
     func setEnabled(uuid: String, enabled: Bool) throws {
         let key = uuid.uppercased()
-        if enableFailures.contains(key) {
+        if enabled && enableFailures.contains(key) {
             throw Failure.enableShouldFail(key)
+        }
+        if !enabled && disableFailures.contains(key) {
+            throw Failure.disableShouldFail(key)
         }
         ops.append(enabled ? .enable(key) : .disable(key))
         if enabled {

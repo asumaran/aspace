@@ -325,6 +325,61 @@ public enum DisplayKit {
         }
     }
 
+    /// Enable/disable several displays inside a single begin/complete
+    /// configuration transaction, so macOS reconfigures the layout once (one
+    /// flicker) instead of once per display. Resolves ids and skips no-op
+    /// transitions exactly like the single-display `setEnabled`.
+    ///
+    /// Returns the UUIDs that could not be resolved to a display id (no live or
+    /// cached id — i.e. not currently connected). Throws if the transaction
+    /// itself fails; the caller can then retry per display to isolate which one
+    /// a ghost is, rather than losing the whole switch.
+    @discardableResult
+    public static func setEnabled(_ changes: [(uuid: String, enabled: Bool)]) throws -> [String] {
+        var registry = DisplayRegistry.load()
+        var registryDirty = false
+        var toApply: [(id: CGDirectDisplayID, enabled: Bool)] = []
+        var unresolved: [String] = []
+
+        for change in changes {
+            let targetID: CGDirectDisplayID
+            let isCurrentlyOnline: Bool
+            if let live = displayID(forUUID: change.uuid) {
+                targetID = live
+                isCurrentlyOnline = true
+                registry.record(uuid: change.uuid, displayID: live, name: displayName(for: live))
+                registryDirty = true
+            } else if let cached = registry.lookup(uuid: change.uuid) {
+                targetID = cached
+                isCurrentlyOnline = false
+            } else {
+                unresolved.append(change.uuid.uppercased())
+                continue
+            }
+
+            // Skip no-op transitions; CG returns an illegal-argument error if
+            // the resulting configuration would not change anything.
+            if change.enabled && isCurrentlyOnline && CGDisplayIsActive(targetID) != 0 { continue }
+            if !change.enabled && !isCurrentlyOnline { continue }
+            toApply.append((targetID, change.enabled))
+        }
+
+        if registryDirty { registry.save() }
+
+        if !toApply.isEmpty {
+            try inDisplayConfiguration { config in
+                for entry in toApply {
+                    let err = CGSConfigureDisplayEnabled(config, entry.id, entry.enabled)
+                    guard err == .success else {
+                        throw DisplayKitError.operationFailed("CGSConfigureDisplayEnabled(\(entry.enabled))", err)
+                    }
+                }
+            }
+        }
+
+        return unresolved
+    }
+
     /// Make a display the primary by shifting all displays so the target lands at (0,0).
     public static func setMain(uuid: String) throws {
         guard let targetID = displayID(forUUID: uuid) else {

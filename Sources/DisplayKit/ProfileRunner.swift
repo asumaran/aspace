@@ -14,6 +14,8 @@ public enum ProfileRunner {
         case profileNotFound(String)
         case wouldDisableEverything(String)
         case operation(String, Error)
+        case enableFailedWhileOnline(String)
+        case disableFailed(String)
 
         public var description: String {
             switch self {
@@ -23,6 +25,10 @@ public enum ProfileRunner {
                 return "Refusing to apply profile '\(name)': it would leave zero displays enabled"
             case .operation(let what, let err):
                 return "\(what): \(err)"
+            case .enableFailedWhileOnline(let uuid):
+                return "enable \(uuid): the display is online but reported a configuration error"
+            case .disableFailed(let uuids):
+                return "disable failed for: \(uuids)"
             }
         }
     }
@@ -142,20 +148,26 @@ public enum ProfileRunner {
             declaredMain=\(mainUUID ?? "-", privacy: .public)
             """)
 
+        // Enable everything the profile keeps in ONE reconfiguration (one
+        // flicker) instead of a separate transaction — and separate flicker —
+        // per display. The backend returns the UUIDs that did not apply;
+        // classify each exactly as the one-at-a-time path did: a failure on a
+        // display that is currently online is a real error (abort), while one
+        // that is not connected is skipped non-destructively.
         var skippedEnable = Set<String>()
-        for uuid in toEnable {
-            do {
-                try backend.setEnabled(uuid: uuid, enabled: true)
-                AspaceLog.profile.notice("enable \(uuid, privacy: .public): ok")
-            } catch {
-                if liveUUIDs.contains(uuid) {
-                    AspaceLog.profile.error("enable \(uuid, privacy: .public): failed while online: \(String(describing: error), privacy: .public)")
-                    throw RunError.operation("enable \(uuid)", error)
-                }
-                skippedEnable.insert(uuid)
-                warn("skipped enable of \(uuid): not currently connected")
+        let enableFailed = backend.setEnabledBatch(toEnable.sorted().map { EnableChange(uuid: $0, enabled: true) })
+        for uuid in enableFailed {
+            if liveUUIDs.contains(uuid) {
+                AspaceLog.profile.error("enable \(uuid, privacy: .public): failed while online")
+                throw RunError.enableFailedWhileOnline(uuid)
             }
+            skippedEnable.insert(uuid)
+            warn("skipped enable of \(uuid): not currently connected")
         }
+        AspaceLog.profile.notice("""
+            enabled=[\(toEnable.subtracting(skippedEnable).sorted().joined(separator: ","), privacy: .public)] \
+            skipped=[\(skippedEnable.sorted().joined(separator: ","), privacy: .public)]
+            """)
 
         sleepFn(1.0)
 
@@ -210,15 +222,18 @@ public enum ProfileRunner {
         }
 
         func disableUnwanted() throws {
-            for uuid in toDisable where known.contains(uuid) {
-                do {
-                    try backend.setEnabled(uuid: uuid, enabled: false)
-                    AspaceLog.profile.notice("disable \(uuid, privacy: .public): ok")
-                } catch {
-                    AspaceLog.profile.error("disable \(uuid, privacy: .public): failed: \(String(describing: error), privacy: .public)")
-                    throw RunError.operation("disable \(uuid)", error)
+            // Tear down every unwanted display in ONE reconfiguration too. A
+            // returned UUID here is a genuine configuration error (an offline
+            // display is a no-op, not a failure), so any failure aborts.
+            let targets = toDisable.filter { known.contains($0) }.sorted()
+            let failed = backend.setEnabledBatch(targets.map { EnableChange(uuid: $0, enabled: false) })
+            guard failed.isEmpty else {
+                for uuid in failed {
+                    AspaceLog.profile.error("disable \(uuid, privacy: .public): failed")
                 }
+                throw RunError.disableFailed(failed.sorted().joined(separator: ","))
             }
+            AspaceLog.profile.notice("disabled=[\(targets.joined(separator: ","), privacy: .public)]")
         }
 
         // A sole survivor (no declared main) must be online before we touch
