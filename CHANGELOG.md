@@ -1,11 +1,12 @@
 # Changelog
 
-All notable changes to this project are documented here. Newer entries are
-generated from the commit log by `Scripts/release.sh`; entries through v0.2.2
-follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project
-aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here, newest first, under a
+`## X.Y.Z (date)` heading. Entries through 0.2.2 were written by hand in the
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) style; newer ones are
+generated from the commit log by `Scripts/release.sh`. The project aims to
+follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.3.0 (2026-07-01)
+## 0.3.0 (2026-07-01)
 
 * feat(app): add menu toggle to disable resolution restore (1746cde)
 * perf(profile): batch enable/disable into a single reconfiguration (82d5279)
@@ -19,7 +20,7 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * build(logging): add Scripts/logs.sh to read the unified log (6f9bbe8)
 * feat(logging): trace profile/resolution operations and topology (d949ee8)
 
-## v0.2.3 (2026-06-30)
+## 0.2.3 (2026-06-30)
 
 * docs: drive releases and the changelog from Scripts/release.sh (13bba7e)
 * build(release): add Scripts/release.sh to automate cutting releases (7fb2897)
@@ -27,7 +28,7 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * fix(menu): ignore registry ghosts when detecting the active profile (37e2c89)
 * feat(profile): auto-set main on the sole surviving display (ada1250)
 
-## [0.2.2] - 2026-06-30
+## 0.2.2 (2026-06-30)
 
 ### Added
 
@@ -44,7 +45,7 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with a colored dot — 🟢 active, ⚪️ inactive/offline — replacing the previous
   monochrome `●`/`○` text.
 
-## [0.2.1] - 2026-06-30
+## 0.2.1 (2026-06-30)
 
 ### Fixed
 
@@ -55,7 +56,7 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   update. The build now strips the leading `v` from `CFBundleVersion` /
   `CFBundleShortVersionString` so they match the appcast.
 
-## [0.2.0] - 2026-06-30
+## 0.2.0 (2026-06-30)
 
 ### Added
 
@@ -96,6 +97,6 @@ aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (snapshot → config). Mode reads/writes use the public
   `CGDisplayCopyAllDisplayModes` / `CGConfigureDisplayWithDisplayMode` APIs.
 
-## [0.1.6]
+## 0.1.6 (2026-05-24)
 
 - Baseline release. See git history for earlier changes.

@@ -67,7 +67,10 @@ commits="$(git log --no-merges --pretty='format:* %s (%h)' "$log_range" \
 if [ -z "$commits" ]; then
   commits="* No changes since ${prev_tag:-the start}."
 fi
-new_section="$(printf '## %s (%s)\n\n%s' "$tag" "$date_str" "$commits")"
+# Heading uses the bare X.Y.Z (no leading "v") to match the version numbers
+# used everywhere else (appcast sparkle:version, the bundle CFBundleVersion);
+# the "v" lives only in the git tag and asset names.
+new_section="$(printf '## %s (%s)\n\n%s' "$VERSION" "$date_str" "$commits")"
 
 # --- dry run: show what would happen, touch nothing -------------------------
 if $DRY_RUN; then
