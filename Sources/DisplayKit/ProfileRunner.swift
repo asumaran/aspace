@@ -38,6 +38,56 @@ public enum ProfileRunner {
         try run(profile: name, config: config, backend: LiveDisplayBackend(), sleep: liveSleep)
     }
 
+    /// What applying a profile *would* do, computed read-only against the live
+    /// topology — nothing is enabled, disabled, or re-homed. Lets you preview a
+    /// switch (`aspace profile <name> --dry-run`) without risking the display
+    /// layout, which is invaluable when a flaky display makes live testing
+    /// expensive.
+    public struct Plan: Equatable {
+        public let profile: String
+        public let onlineNow: [String]
+        public let toEnable: [String]
+        public let toDisable: [String]
+        public let declaredMain: String?
+        /// The main we predict will end up set: the declared main, or the sole
+        /// surviving display if the switch leaves exactly one on.
+        public let effectiveMain: String?
+    }
+
+    public static func plan(profile name: String, config: AspaceConfig) -> Plan? {
+        plan(profile: name, config: config, backend: LiveDisplayBackend())
+    }
+
+    static func plan(profile name: String, config: AspaceConfig, backend: DisplayBackend) -> Plan? {
+        let known = backend.allKnownUUIDs()
+        let toDisable: Set<String>
+        let declaredMain: String?
+        if name == AspaceConfig.allProfileName {
+            toDisable = []
+            declaredMain = nil
+        } else if let profile = config.profiles[name] {
+            toDisable = Set(profile.disable.map { $0.uppercased() })
+            declaredMain = profile.main?.uppercased()
+        } else {
+            return nil
+        }
+        let toEnable = known.subtracting(toDisable)
+        let online = Set(backend.listDisplays().map { $0.uuid.uppercased() })
+        // Predict which of the enable targets will actually be on: the currently
+        // online ones plus the displays the config manages (so a stale registry
+        // "ghost" that can't really come online doesn't skew the survivor).
+        let willBeOnline = toEnable.intersection(online.union(config.referencedDisplayUUIDs))
+        let effectiveMain = declaredMain ?? soleSurvivingDisplay(online: willBeOnline, toDisable: toDisable)
+        return Plan(
+            profile: name,
+            onlineNow: online.sorted(),
+            toEnable: toEnable.sorted(),
+            toDisable: toDisable.sorted(),
+            declaredMain: declaredMain,
+            effectiveMain: effectiveMain
+        )
+    }
+
     /// Removes registry entries that have not been observed in `days` days.
     /// Returns the UUIDs that were pruned.
     @discardableResult

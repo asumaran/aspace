@@ -172,6 +172,26 @@ import Testing
         #expect(disable! < setMain!, "declared main is set after disabling the outgoing display")
     }
 
+    @Test func planPreviewsWithoutMutating() {
+        let backend = FakeBackend(online: [STUDIO, DELL1, DELL2], known: [STUDIO, DELL1, DELL2, LG_TV])
+        let plan = ProfileRunner.plan(profile: "treadmill", config: standardConfig(), backend: backend)
+
+        #expect(plan?.toDisable.sorted() == [DELL1, DELL2, STUDIO].sorted())
+        #expect(plan?.toEnable == [LG_TV])
+        #expect(plan?.effectiveMain == LG_TV, "treadmill leaves only the TV -> predicted sole-survivor main")
+        #expect(backend.ops.isEmpty, "a dry-run plan must not touch any display")
+    }
+
+    @Test func planUsesDeclaredMainAndReportsNothingForUnknownProfile() {
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        let plan = ProfileRunner.plan(profile: "desk", config: standardConfig(), backend: backend)
+        #expect(plan?.toDisable == [LG_TV])
+        #expect(plan?.effectiveMain == STUDIO)
+        #expect(backend.ops.isEmpty)
+
+        #expect(ProfileRunner.plan(profile: "nope", config: standardConfig(), backend: backend) == nil)
+    }
+
     @Test func soleSurvivingDisplayHelper() {
         #expect(ProfileRunner.soleSurvivingDisplay(online: ["A", "B"], toDisable: ["A"]) == "B")
         #expect(ProfileRunner.soleSurvivingDisplay(online: ["A", "B"], toDisable: []) == nil)

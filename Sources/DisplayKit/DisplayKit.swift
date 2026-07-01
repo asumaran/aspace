@@ -227,6 +227,20 @@ public enum DisplayKit {
         )
     }
 
+    /// Best-known name for each display we can name — currently-online displays
+    /// plus everything in the persistent registry. For diagnostics and the
+    /// `--dry-run` output, where offline displays still need a readable label.
+    public static func knownDisplayNames() -> [String: String] {
+        var names: [String: String] = [:]
+        for (uuid, entry) in DisplayRegistry.load().entries {
+            if let name = entry.name, !name.isEmpty { names[uuid.uppercased()] = name }
+        }
+        for d in listDisplays() where !d.name.isEmpty {
+            names[d.uuid.uppercased()] = d.name
+        }
+        return names
+    }
+
     /// Name of the profile whose topology matches `online`, or nil ("custom")
     /// when none does. The comparison universe is the union of every profile's
     /// `disable` list — the displays profiles actually toggle — NOT every UUID

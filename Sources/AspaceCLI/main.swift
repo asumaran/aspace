@@ -152,9 +152,39 @@ extension Aspace {
         @Argument(help: "Profile name.")
         var name: String
 
+        @Flag(name: .long, help: "Preview what the profile would do, changing nothing.")
+        var dryRun = false
+
         func run() throws {
             let config = AspaceConfig.loadOrEmpty()
+            if dryRun {
+                guard let plan = ProfileRunner.plan(profile: name, config: config) else {
+                    throw ValidationError("Profile not found in config: \(name)")
+                }
+                printPlan(plan)
+                return
+            }
             try ProfileRunner.run(profile: name, config: config)
+        }
+
+        private func printPlan(_ plan: ProfileRunner.Plan) {
+            let names = DisplayKit.knownDisplayNames()
+            let onlineNow = Set(plan.onlineNow)
+            func label(_ uuid: String) -> String {
+                let name = names[uuid] ?? "(unknown)"
+                return "\(name)  [\(uuid)]\(onlineNow.contains(uuid) ? "" : "  offline now")"
+            }
+            print("dry-run: profile '\(plan.profile)' — nothing was changed\n")
+            print("  enable:")
+            plan.toEnable.isEmpty ? print("    (none)") : plan.toEnable.forEach { print("    + \(label($0))") }
+            print("  disable:")
+            plan.toDisable.isEmpty ? print("    (none)") : plan.toDisable.forEach { print("    - \(label($0))") }
+            if let main = plan.effectiveMain {
+                let how = plan.declaredMain == nil ? "  (auto: sole surviving display)" : ""
+                print("  main:\n    * \(label(main))\(how)")
+            } else {
+                print("  main:\n    (unchanged)")
+            }
         }
     }
 
