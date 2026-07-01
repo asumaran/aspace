@@ -111,6 +111,37 @@ import Testing
         #expect(warnings.contains(where: { $0.contains("never came online") }))
     }
 
+    @Test func setMainRetriesThroughTransientFailures() throws {
+        // CGCompleteDisplayConfiguration can transiently fail (CGError 1001)
+        // while the display system settles; setMain should retry and succeed
+        // rather than abort the whole switch.
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2, LG_TV],
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        backend.mainFailuresRemaining = [LG_TV: 2]   // fails twice, then succeeds
+
+        try ProfileRunner.run(profile: "treadmill", config: standardConfig(), backend: backend)
+
+        #expect(backend.ops.contains(.setMain(LG_TV)),
+                "setMain should succeed after retrying transient failures")
+    }
+
+    @Test func soleSurvivorPromotedBeforeItDropsDuringDisable() throws {
+        // The real failure mode: disabling the desk monitors briefly knocks the
+        // TV offline. Because setMain runs before the disables, it still takes.
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2, LG_TV],
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        backend.dropOnDisable = [STUDIO: [LG_TV]]   // disabling Studio drops the TV
+
+        try ProfileRunner.run(profile: "treadmill", config: standardConfig(), backend: backend)
+
+        #expect(backend.ops.contains(.setMain(LG_TV)),
+                "the survivor must be promoted before a disable can drop it")
+    }
+
     @Test func noAutoMainWhenMultipleDisplaysSurvive() throws {
         // Disabling only the TV leaves three displays on and no `main` declared,
         // so the runner must not pick one arbitrarily.

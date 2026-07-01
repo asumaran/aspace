@@ -39,6 +39,16 @@ final class FakeBackend: DisplayBackend {
     var lagOnlinePolls: [String: Int] = [:]
     private var lagPending: [String: Int] = [:]
 
+    /// Number of times `setMain(uuid)` should fail transiently before it
+    /// succeeds (simulates CGCompleteDisplayConfiguration returning CGError 1001
+    /// while the display system is still settling).
+    var mainFailuresRemaining: [String: Int] = [:]
+
+    /// When one of these UUIDs is disabled, the associated UUIDs also drop
+    /// offline (simulates a TV that re-negotiates the HDMI link and briefly
+    /// disappears when the display arrangement changes).
+    var dropOnDisable: [String: Set<String>] = [:]
+
     /// Operations recorded in the order the runner invoked them.
     private(set) var ops: [Op] = []
 
@@ -88,11 +98,16 @@ final class FakeBackend: DisplayBackend {
         } else {
             online.remove(key)
             lagPending[key] = nil
+            for dropped in dropOnDisable[key] ?? [] { online.remove(dropped) }
         }
     }
 
     func setMain(uuid: String) throws {
         let key = uuid.uppercased()
+        if let remaining = mainFailuresRemaining[key], remaining > 0 {
+            mainFailuresRemaining[key] = remaining - 1
+            throw DisplayKitError.operationFailed("CGCompleteDisplayConfiguration", .failure)
+        }
         if let failure = mainFailure, failure.uuid.uppercased() == key {
             throw failure.error
         }
