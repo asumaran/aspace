@@ -18,7 +18,18 @@ final class AspaceModel: ObservableObject {
     @Published private(set) var activeResolution: String?
     @Published private(set) var cliVersion: String?
 
+    /// The most recently active resolution preset. Profiles only change
+    /// topology, and macOS brings re-enabled displays back at inconsistent
+    /// default modes, so switching back to `desk` loses the preset. We remember
+    /// the last active preset and re-assert it after a profile switch (see
+    /// `scheduleResolutionRestore`). Persisted; only ever set to a real preset,
+    /// so it carries across a `treadmill` state that matches none.
+    @Published private(set) var lastResolution: String?
+    private static let lastResolutionKey = "aspace.lastResolution"
+    private var resolutionRestoreTask: Task<Void, Never>?
+
     init() {
+        lastResolution = UserDefaults.standard.string(forKey: Self.lastResolutionKey)
         registerForDisplayChanges()
         refresh()
     }
@@ -73,26 +84,43 @@ final class AspaceModel: ObservableObject {
         displayRows = DisplayKit.displayStatus(online: displays, config: config)
         activeProfile = Self.detectActiveProfile(displays: displays, config: config)
         activeResolution = Self.detectActiveResolution(displays: displays, config: config)
+        if let active = activeResolution { rememberResolution(active) }
         cliVersion = Self.detectCLIVersion()
         logTopology()
     }
 
+    private func rememberResolution(_ name: String) {
+        guard name != lastResolution else { return }
+        lastResolution = name
+        UserDefaults.standard.set(name, forKey: Self.lastResolutionKey)
+    }
+
+    private var lastTopologySignature: String?
+
     /// Per-display snapshot of the settled state (it runs from `refresh`, after
     /// the apply delay). Read-only — never reconfigures — so it is safe to emit
-    /// even right after a topology change. Read it with `Scripts/logs.sh`.
+    /// even right after a topology change. Deduplicated: macOS fires many
+    /// reconfiguration callbacks per switch, so it only logs when the topology
+    /// actually changed. Read it with `Scripts/logs.sh`.
     private func logTopology() {
+        var rows: [String] = []
+        var signature = "\(activeProfile ?? "custom")/\(activeResolution ?? "custom")"
+        for d in displays {
+            let mode = DisplayKit.currentMode(uuid: d.uuid)
+            let res = mode.map { "\($0.pointWidth)x\($0.pointHeight)" } ?? "?"
+            signature += "|\(d.uuid):\(d.isMain):\(d.isEnabled):\(res)"
+            rows.append("  \(d.isMain ? "*" : "-") \(d.name) [\(d.uuid)] enabled=\(d.isEnabled) mode=\(res)")
+        }
+        guard signature != lastTopologySignature else { return }
+        lastTopologySignature = signature
+
         AspaceLog.app.notice("""
             topology: profile=\(self.activeProfile ?? "custom", privacy: .public) \
             resolution=\(self.activeResolution ?? "custom", privacy: .public) \
             online=\(self.displays.count)
             """)
-        for d in displays {
-            let mode = DisplayKit.currentMode(uuid: d.uuid)
-            let res = mode.map { "\($0.pointWidth)x\($0.pointHeight)" } ?? "?"
-            AspaceLog.app.notice("""
-                  \(d.isMain ? "*" : "-", privacy: .public) \(d.name, privacy: .public) \
-                [\(d.uuid, privacy: .public)] enabled=\(d.isEnabled) mode=\(res, privacy: .public)
-                """)
+        for row in rows {
+            AspaceLog.app.notice("\(row, privacy: .public)")
         }
     }
 
@@ -103,6 +131,7 @@ final class AspaceModel: ObservableObject {
         } catch {
             presentError("Failed to apply profile '\(name)': \(error)")
         }
+        scheduleResolutionRestore(afterProfile: name)
         // The reconfig callback will fire and refresh, but call it explicitly
         // in case the callback is delayed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -110,10 +139,58 @@ final class AspaceModel: ObservableObject {
         }
     }
 
+    /// After a profile switch, re-assert the last resolution preset so returning
+    /// to a topology (e.g. `desk`) also restores the resolution you had. Safe by
+    /// construction: it does nothing when the profile disables the preset's
+    /// displays (e.g. `treadmill` turning the desk monitors off), and it defers
+    /// the `setMode` until those displays are back online and settled — never
+    /// touching them in the volatile window right after a topology change, which
+    /// is what destabilized an earlier, eager version.
+    private func scheduleResolutionRestore(afterProfile profileName: String) {
+        resolutionRestoreTask?.cancel()
+        guard let preset = lastResolution,
+              let spec = config.resolutions[preset], !spec.isEmpty else { return }
+        let targets = Set(spec.keys.map { $0.uppercased() })
+        let disabled = Set((config.profiles[profileName]?.disable ?? []).map { $0.uppercased() })
+        guard targets.isDisjoint(with: disabled) else {
+            AspaceLog.app.notice("resolution restore '\(preset, privacy: .public)': skipped (profile '\(profileName, privacy: .public)' disables its displays)")
+            return
+        }
+
+        resolutionRestoreTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Wait for every target display to come back online (a re-enabled
+            // display can lag), then settle briefly before touching modes.
+            var waited = 0.0
+            while waited < 6.0 {
+                let online = Set(DisplayKit.listDisplays().map { $0.uuid.uppercased() })
+                if targets.isSubset(of: online) { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 0.5
+            }
+            if Task.isCancelled { return }
+            let online = Set(DisplayKit.listDisplays().map { $0.uuid.uppercased() })
+            guard targets.isSubset(of: online) else {
+                AspaceLog.app.notice("resolution restore '\(preset, privacy: .public)': skipped (targets not all online after \(waited, privacy: .public)s)")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            if Task.isCancelled { return }
+            AspaceLog.app.notice("resolution restore '\(preset, privacy: .public)': reapplying")
+            do {
+                try ResolutionRunner.run(preset: preset, config: self.config)
+            } catch {
+                AspaceLog.app.error("resolution restore '\(preset, privacy: .public)' failed: \(String(describing: error), privacy: .public)")
+            }
+            self.refresh()
+        }
+    }
+
     func applyResolution(_ name: String) {
         AspaceLog.app.notice("applyResolution '\(name, privacy: .public)' requested")
         do {
             try ResolutionRunner.run(preset: name, config: config)
+            rememberResolution(name)
         } catch {
             presentError("Failed to apply resolution preset '\(name)': \(error)")
         }
