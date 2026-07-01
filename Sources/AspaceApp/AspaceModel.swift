@@ -28,8 +28,17 @@ final class AspaceModel: ObservableObject {
     private static let lastResolutionKey = "aspace.lastResolution"
     private var resolutionRestoreTask: Task<Void, Never>?
 
+    /// Whether a profile switch re-asserts the last resolution preset (see
+    /// `scheduleResolutionRestore`). User-toggleable from the menu and persisted;
+    /// defaults on so behavior is unchanged until the user opts out. Turning it
+    /// off removes the extra `setMode` reconfiguration at the tail of a switch.
+    @Published private(set) var restoreResolutionEnabled: Bool
+    private static let restoreResolutionKey = "aspace.restoreResolutionEnabled"
+
     init() {
         lastResolution = UserDefaults.standard.string(forKey: Self.lastResolutionKey)
+        // Absent key -> default on (preserve the existing behavior).
+        restoreResolutionEnabled = UserDefaults.standard.object(forKey: Self.restoreResolutionKey) as? Bool ?? true
         registerForDisplayChanges()
         refresh()
     }
@@ -153,6 +162,10 @@ final class AspaceModel: ObservableObject {
     /// is what destabilized an earlier, eager version.
     private func scheduleResolutionRestore(afterProfile profileName: String) {
         resolutionRestoreTask?.cancel()
+        guard restoreResolutionEnabled else {
+            AspaceLog.app.notice("resolution restore: disabled by user setting")
+            return
+        }
         guard let preset = lastResolution,
               let spec = config.resolutions[preset], !spec.isEmpty else { return }
         let targets = Set(spec.keys.map { $0.uppercased() })
@@ -206,6 +219,15 @@ final class AspaceModel: ObservableObject {
             if applied { rememberResolution(name) }
             refresh()
         }
+    }
+
+    func setRestoreResolutionEnabled(_ enabled: Bool) {
+        guard enabled != restoreResolutionEnabled else { return }
+        restoreResolutionEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.restoreResolutionKey)
+        AspaceLog.app.notice("resolution restore setting: \(enabled ? "on" : "off", privacy: .public)")
+        // Cancel a pending restore if the user turns the feature off mid-switch.
+        if !enabled { resolutionRestoreTask?.cancel() }
     }
 
     func openConfigFolder() {

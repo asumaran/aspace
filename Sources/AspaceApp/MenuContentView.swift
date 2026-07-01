@@ -40,6 +40,11 @@ struct MenuContentView: View {
                 }
                 .disabled(!model.isResolutionApplicable(name))
             }
+
+            Toggle("Restore resolution after switch", isOn: Binding(
+                get: { model.restoreResolutionEnabled },
+                set: { model.setRestoreResolutionEnabled($0) }
+            ))
         }
 
         Divider()
