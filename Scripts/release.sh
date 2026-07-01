@@ -96,11 +96,42 @@ if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
   exit 1
 fi
 
+# Every CHANGELOG heading must be "## X.Y.Z (YYYY-MM-DD)" — no "v" prefix, no
+# brackets. Keeping the changelog on the same bare X.Y.Z the appcast and bundle
+# use is what stops the version-format drift that has bitten Sparkle before.
+bad_headings="$(grep -nE '^## ' CHANGELOG.md \
+  | grep -vE '^[0-9]+:## [0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$' || true)"
+if [ -n "$bad_headings" ]; then
+  echo "error: CHANGELOG.md has headings that are not '## X.Y.Z (YYYY-MM-DD)':" >&2
+  printf '%s\n' "$bad_headings" >&2
+  exit 1
+fi
+
 # --- quality gate -----------------------------------------------------------
 echo "==> make test"
 make test
-echo "==> make app"
-make app
+# Build the app stamped with this exact tag, mirroring how CI builds from the
+# pushed tag (VERSION = the ref name). This makes the smoke build represent the
+# real release version so the bundle check below is meaningful.
+echo "==> make app (VERSION=$tag)"
+VERSION="$tag" make app
+
+# The published appcast advertises sparkle:version=$VERSION (bare, no "v"). The
+# bundle must stamp that SAME bare version into CFBundleVersion /
+# CFBundleShortVersionString; if they disagree, Sparkle compares mismatched
+# strings and offers a spurious update to the same release (the 0.2.1 bug) or
+# misses a real one. Verify it here, before the tag is pushed.
+app_plist="build/Aspace.app/Contents/Info.plist"
+for key in CFBundleShortVersionString CFBundleVersion; do
+  got="$(/usr/libexec/PlistBuddy -c "Print :$key" "$app_plist" 2>/dev/null || true)"
+  if [ "$got" != "$VERSION" ]; then
+    echo "error: bundle $key is '$got', expected '$VERSION' (bare X.Y.Z)." >&2
+    echo "       Sparkle would compare this against the appcast's sparkle:version=$VERSION" >&2
+    echo "       and mis-detect updates. Check the version stamping in Scripts/build-app.sh." >&2
+    exit 1
+  fi
+done
+echo "==> bundle version OK: CFBundleVersion=$VERSION matches the appcast"
 
 # --- prepend the CHANGELOG section ------------------------------------------
 # Insert before the first existing "## " heading so the title and intro stay on
