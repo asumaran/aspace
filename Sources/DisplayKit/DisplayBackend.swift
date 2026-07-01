@@ -9,6 +9,15 @@ protocol DisplayBackend {
     func setEnabled(uuid: String, enabled: Bool) throws
     func setMain(uuid: String) throws
     func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws
+    /// Move the pointer onto the current main display. Recovers a cursor that
+    /// was stranded off-screen after collapsing to a single display.
+    func warpCursorToMainDisplay()
+}
+
+extension DisplayBackend {
+    // Cursor warping is a pure side effect with nothing to assert, so tests get
+    // a no-op by default.
+    func warpCursorToMainDisplay() {}
 }
 
 /// Production backend that delegates to `DisplayKit`'s real CoreGraphics
@@ -23,4 +32,5 @@ struct LiveDisplayBackend: DisplayBackend {
     func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws {
         try DisplayKit.setMode(uuid: uuid, spec: spec)
     }
+    func warpCursorToMainDisplay() { DisplayKit.warpCursorToMainDisplay() }
 }

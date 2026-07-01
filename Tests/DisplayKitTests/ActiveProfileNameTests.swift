@@ -56,11 +56,32 @@ import Testing
         #expect(name == AspaceConfig.allProfileName)
     }
 
-    @Test func customWhenTopologyMatchesNoProfile() {
-        // TV and BUILTIN both off (e.g. laptop lid closed on the desk setup):
-        // matches neither desk (expects only TV off) nor treadmill.
+    @Test func matchesDeskWithBuiltinOffClamshell() {
+        // Desk monitors on, TV and the built-in both off (laptop lid closed):
+        // the unmanaged built-in being off must not force "custom" — desk still
+        // matches because everything desk disables (the TV) is off.
         let name = DisplayKit.activeProfileName(online: [STUDIO, DELL1, DELL2], config: config())
+        #expect(name == "desk")
+    }
+
+    @Test func customWhenADisabledDisplayIsStillOn() {
+        // A display a profile disables (the TV for desk) is still online, so no
+        // profile matches — genuinely custom.
+        let name = DisplayKit.activeProfileName(online: [STUDIO, TV], config: config())
         #expect(name == nil)
+    }
+
+    @Test func mostSpecificProfileWins() {
+        // Two candidates whose disabled sets are both offline: the one that
+        // disables more displays is the better explanation.
+        let cfg = AspaceConfig(profiles: [
+            "one": .init(disable: [TV]),
+            "two": .init(disable: [TV, BUILTIN]),
+        ])
+        // Only TV off -> only "one" qualifies.
+        #expect(DisplayKit.activeProfileName(online: [STUDIO, DELL1, DELL2, BUILTIN], config: cfg) == "one")
+        // TV and built-in off -> both qualify, "two" is more specific.
+        #expect(DisplayKit.activeProfileName(online: [STUDIO, DELL1, DELL2], config: cfg) == "two")
     }
 
     @Test func nilWhenNoProfilesDefined() {

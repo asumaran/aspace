@@ -232,9 +232,16 @@ public enum DisplayKit {
     /// `disable` list — the displays profiles actually toggle — NOT every UUID
     /// the registry has ever seen. That way a display that is offline but
     /// unmanaged (a stale registry "ghost", or one referenced only by a
-    /// resolution preset) can't prevent a match. A profile matches when the
-    /// universe displays that are offline are exactly its `disable` set; the
-    /// built-in "all" matches when every universe display is online. Pure.
+    /// resolution preset) can't prevent a match.
+    ///
+    /// A profile is a candidate when none of the displays it disables are still
+    /// online (all of its `disable` set is offline). Extra offline displays it
+    /// does not manage — e.g. a clamshelled built-in — do not disqualify it, so
+    /// `desk` still reads as `desk` with the laptop lid closed. Among candidates
+    /// the most specific wins (the one disabling the most displays best explains
+    /// the offline set). A profile whose disabled displays are actually still on
+    /// never matches. The built-in "all" matches when every universe display is
+    /// online. Pure.
     public static func activeProfileName(online: Set<String>, config: AspaceConfig) -> String? {
         var universe = Set<String>()
         for profile in config.profiles.values {
@@ -245,10 +252,15 @@ public enum DisplayKit {
         let onlineUpper = Set(online.map { $0.uppercased() })
         let offline = universe.subtracting(onlineUpper)
 
-        for (name, profile) in config.profiles {
-            let disabled = Set(profile.disable.map { $0.uppercased() })
-            if disabled == offline { return name }
+        var best: (name: String, disabledCount: Int)?
+        for name in config.profiles.keys.sorted() {
+            let disabled = Set((config.profiles[name]?.disable ?? []).map { $0.uppercased() })
+            guard !disabled.isEmpty, disabled.isSubset(of: offline) else { continue }
+            if best == nil || disabled.count > best!.disabledCount {
+                best = (name, disabled.count)
+            }
         }
+        if let best { return best.name }
         if offline.isEmpty {
             return AspaceConfig.allProfileName
         }
@@ -321,6 +333,20 @@ public enum DisplayKit {
                 }
             }
         }
+    }
+
+    /// Warp the pointer to the center of the current main display. Collapsing to
+    /// a single display can leave the cursor stranded at a coordinate that no
+    /// longer maps to any active screen (frozen pointer, error beeps on
+    /// keypress); moving it onto the display recovers it.
+    public static func warpCursorToMainDisplay() {
+        let mainID = CGMainDisplayID()
+        let bounds = CGDisplayBounds(mainID)
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        CGWarpMouseCursorPosition(center)
+        // Re-couple the hardware mouse to the on-screen cursor; a warp alone can
+        // leave them dissociated.
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
 
     // MARK: - Display modes

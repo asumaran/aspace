@@ -33,6 +33,12 @@ final class FakeBackend: DisplayBackend {
     /// UUIDs whose setMode call reports the mode as unavailable.
     var modeUnavailable: Set<String> = []
 
+    /// UUIDs that, once enabled, only appear online after being polled by
+    /// `listDisplays()` this many times (simulates a display that lags coming
+    /// online, e.g. a TV negotiating over HDMI).
+    var lagOnlinePolls: [String: Int] = [:]
+    private var lagPending: [String: Int] = [:]
+
     /// Operations recorded in the order the runner invoked them.
     private(set) var ops: [Op] = []
 
@@ -42,7 +48,15 @@ final class FakeBackend: DisplayBackend {
     }
 
     func listDisplays() -> [DisplayInfo] {
-        online.sorted().map { uuid in
+        for (uuid, remaining) in lagPending {
+            if remaining <= 0 {
+                online.insert(uuid)
+                lagPending[uuid] = nil
+            } else {
+                lagPending[uuid] = remaining - 1
+            }
+        }
+        return online.sorted().map { uuid in
             DisplayInfo(
                 id: 0,
                 uuid: uuid,
@@ -65,10 +79,15 @@ final class FakeBackend: DisplayBackend {
         }
         ops.append(enabled ? .enable(key) : .disable(key))
         if enabled {
-            online.insert(key)
             known.insert(key)
+            if let polls = lagOnlinePolls[key] {
+                lagPending[key] = polls          // not online until polled enough
+            } else {
+                online.insert(key)
+            }
         } else {
             online.remove(key)
+            lagPending[key] = nil
         }
     }
 

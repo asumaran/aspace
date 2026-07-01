@@ -60,6 +60,57 @@ import Testing
         #expect(backend.ops.contains(.setMain(LG_TV)))
     }
 
+    @Test func soleSurvivorIsPromotedEvenWhenItLagsComingOnline() throws {
+        // The real bug: the TV is enabled but takes a few seconds to report
+        // online, so it is absent from listDisplays() right after enabling.
+        // The survivor must still be derived from the plan (not listDisplays),
+        // and setMain must wait for it — otherwise the lone TV is left without a
+        // main (stranded cursor / cropped desktop).
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2],   // TV is OFF at the start
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        backend.lagOnlinePolls = [LG_TV: 3]   // TV appears online only after polling
+
+        var applied = false
+        try ProfileRunner.run(
+            profile: "treadmill",
+            config: standardConfig(),
+            backend: backend,
+            sleep: { _ in applied = true }    // no real delay; just proves it ran
+        )
+
+        #expect(applied)
+        #expect(backend.online == [LG_TV], "only the TV should remain enabled")
+        #expect(backend.ops.contains(.setMain(LG_TV)),
+                "the lagging sole survivor must still be promoted to main")
+    }
+
+    @Test func soleSurvivorThatNeverComesOnlineLeavesDisplaysEnabled() throws {
+        // If the lone survivor never comes online (TV unplugged / dead HDMI),
+        // don't tear down the working displays — a stranded, empty session is
+        // worse than not switching.
+        let backend = FakeBackend(
+            online: [STUDIO, DELL1, DELL2],
+            known:  [STUDIO, DELL1, DELL2, LG_TV]
+        )
+        backend.lagOnlinePolls = [LG_TV: 1000]   // never appears within the wait
+
+        var warnings: [String] = []
+        try ProfileRunner.run(
+            profile: "treadmill",
+            config: standardConfig(),
+            backend: backend,
+            warn: { warnings.append($0) }
+        )
+
+        #expect(backend.online == [STUDIO, DELL1, DELL2], "current displays must stay enabled")
+        #expect(!backend.ops.contains(where: {
+            if case .disable = $0 { return true } else { return false }
+        }), "nothing should be disabled when the survivor never arrives")
+        #expect(warnings.contains(where: { $0.contains("never came online") }))
+    }
+
     @Test func noAutoMainWhenMultipleDisplaysSurvive() throws {
         // Disabling only the TV leaves three displays on and no `main` declared,
         // so the runner must not pick one arbitrarily.
@@ -89,24 +140,36 @@ import Testing
         #expect(!backend.ops.contains(.setMain(LG_TV)))
     }
 
-    @Test func mainIsSetAfterDisablingOtherDisplays() throws {
-        // The lone survivor must be re-homed only once the other displays are
-        // off, so it settles into its own native mode first instead of
-        // inheriting a scaled mode from the displays being torn down.
+    @Test func soleSurvivorIsPromotedBeforeDisablingOtherDisplays() throws {
+        // The lone survivor is set main while it is still online, before the
+        // others are torn down: disabling them can briefly knock a TV offline,
+        // so promoting first guarantees setMain takes effect.
         let backend = FakeBackend(
             online: [STUDIO, DELL1, DELL2, LG_TV],
             known:  [STUDIO, DELL1, DELL2, LG_TV]
         )
         try ProfileRunner.run(profile: "treadmill", config: standardConfig(), backend: backend)
 
-        let lastDisable = backend.ops.lastIndex {
-            if case .disable = $0 { return true } else { return false }
-        }
         let setMain = backend.ops.firstIndex {
             if case .setMain = $0 { return true } else { return false }
         }
-        #expect(lastDisable != nil && setMain != nil)
-        #expect(lastDisable! < setMain!, "main must be set after every disable")
+        let firstDisable = backend.ops.firstIndex {
+            if case .disable = $0 { return true } else { return false }
+        }
+        #expect(setMain != nil && firstDisable != nil)
+        #expect(setMain! < firstDisable!, "sole survivor must be promoted before disabling the others")
+    }
+
+    @Test func declaredMainIsSetAfterDisabling() throws {
+        // With a declared main (desk), the outgoing display is disabled first
+        // (while still main, keeping it warm), then the new main is set.
+        let backend = FakeBackend(online: [LG_TV], known: [STUDIO, DELL1, DELL2, LG_TV])
+        try ProfileRunner.run(profile: "desk", config: standardConfig(), backend: backend)
+
+        let setMain = backend.ops.firstIndex { if case .setMain = $0 { return true } else { return false } }
+        let disable = backend.ops.firstIndex { if case .disable = $0 { return true } else { return false } }
+        #expect(setMain != nil && disable != nil)
+        #expect(disable! < setMain!, "declared main is set after disabling the outgoing display")
     }
 
     @Test func soleSurvivingDisplayHelper() {

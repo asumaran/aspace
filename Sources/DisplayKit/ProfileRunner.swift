@@ -92,6 +92,7 @@ public enum ProfileRunner {
             declaredMain=\(mainUUID ?? "-", privacy: .public)
             """)
 
+        var skippedEnable = Set<String>()
         for uuid in toEnable {
             do {
                 try backend.setEnabled(uuid: uuid, enabled: true)
@@ -101,46 +102,42 @@ public enum ProfileRunner {
                     AspaceLog.profile.error("enable \(uuid, privacy: .public): failed while online: \(String(describing: error), privacy: .public)")
                     throw RunError.operation("enable \(uuid)", error)
                 }
+                skippedEnable.insert(uuid)
                 warn("skipped enable of \(uuid): not currently connected")
             }
         }
 
         sleepFn(1.0)
 
-        // Resolve the main display from the pre-disable state: an explicit
-        // `main` wins; otherwise, if `toDisable` would leave exactly one display
-        // on, that sole survivor is promoted. Survivors are measured against
-        // what is actually online after the enable phase, so offline registry
-        // entries (ghosts that could not be enabled) never count.
-        let liveAfterEnable = Set(backend.listDisplays().map { $0.uuid.uppercased() })
-        let effectiveMain = mainUUID ?? soleSurvivingDisplay(online: liveAfterEnable, toDisable: toDisable)
+        // Resolve which display should be main. An explicit `main` wins;
+        // otherwise, if exactly one display will end up enabled, promote that
+        // sole survivor. The survivor set is derived from the PLAN — the kept
+        // displays minus the ones that could not be enabled — NOT from a fresh
+        // listDisplays(): a just-enabled display (a TV over HDMI especially) can
+        // take several seconds to report online, and reading listDisplays() here
+        // would show the survivor as absent, so it would never get promoted,
+        // leaving a lone display un-normalized (stranded cursor, cropped desktop).
+        let willBeOnline = toEnable.subtracting(skippedEnable)
+        let effectiveMain = mainUUID ?? soleSurvivingDisplay(online: willBeOnline, toDisable: toDisable)
         AspaceLog.profile.notice("""
-            after-enable online=[\(liveAfterEnable.sorted().joined(separator: ","), privacy: .public)] \
-            effectiveMain=\(effectiveMain ?? "-", privacy: .public)
+            after-enable willBeOnline=[\(willBeOnline.sorted().joined(separator: ","), privacy: .public)] \
+            effectiveMain=\(effectiveMain ?? "-", privacy: .public) declaredMain=\(mainUUID != nil)
             """)
 
-        // Disable the unwanted displays BEFORE setting main. Collapsing to the
-        // final topology first lets the surviving display settle into its own
-        // native mode; only then do we re-home its origin. Calling setMain while
-        // the other (e.g. retina) displays were still on can leave a lone TV in
-        // an inherited oversized scaled mode, rendering the desktop too large
-        // and cropped.
-        for uuid in toDisable where known.contains(uuid) {
-            do {
-                try backend.setEnabled(uuid: uuid, enabled: false)
-                AspaceLog.profile.notice("disable \(uuid, privacy: .public): ok")
+        // Set main, waiting for the target to actually come online first. A
+        // freshly-enabled TV can lag several seconds over HDMI; setMain on an
+        // offline display is a no-op, which is what left a lone TV un-normalized
+        // (stranded cursor / cropped desktop). Polling listDisplays() only reads
+        // state, so it is safe in this window.
+        func promoteMain() throws {
+            guard let effectiveMain else { return }
+            var waited = 0.0
+            while waited < 6.0
+                && !backend.listDisplays().contains(where: { $0.uuid.uppercased() == effectiveMain }) {
+                sleepFn(0.5)
+                waited += 0.5
             }
-            catch {
-                AspaceLog.profile.error("disable \(uuid, privacy: .public): failed: \(String(describing: error), privacy: .public)")
-                throw RunError.operation("disable \(uuid)", error)
-            }
-        }
-
-        // Now assign main / re-home the origin to (0,0). macOS makes a lone
-        // display main implicitly, but only `setMain` normalizes its origin, so
-        // the cursor and menu bar stay reachable.
-        if let effectiveMain {
-            sleepFn(0.5)
+            AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): waited \(waited, privacy: .public)s for online")
             do {
                 try backend.setMain(uuid: effectiveMain)
                 AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): ok")
@@ -150,6 +147,60 @@ public enum ProfileRunner {
                 AspaceLog.profile.error("setMain \(effectiveMain, privacy: .public): failed: \(String(describing: error), privacy: .public)")
                 throw RunError.operation("main \(effectiveMain)", error)
             }
+        }
+
+        func disableUnwanted() throws {
+            for uuid in toDisable where known.contains(uuid) {
+                do {
+                    try backend.setEnabled(uuid: uuid, enabled: false)
+                    AspaceLog.profile.notice("disable \(uuid, privacy: .public): ok")
+                } catch {
+                    AspaceLog.profile.error("disable \(uuid, privacy: .public): failed: \(String(describing: error), privacy: .public)")
+                    throw RunError.operation("disable \(uuid)", error)
+                }
+            }
+        }
+
+        // A sole survivor (no declared main) must be online before we touch
+        // anything; if it never arrives, abort and leave the current displays
+        // enabled rather than stranding the session (non-destructive).
+        if mainUUID == nil, let survivor = effectiveMain {
+            var waited = 0.0
+            while waited < 8.0
+                && !backend.listDisplays().contains(where: { $0.uuid.uppercased() == survivor }) {
+                sleepFn(0.5)
+                waited += 0.5
+            }
+            guard backend.listDisplays().contains(where: { $0.uuid.uppercased() == survivor }) else {
+                AspaceLog.profile.error("survivor \(survivor, privacy: .public): never came online after \(waited, privacy: .public)s; leaving current displays enabled")
+                warn("profile '\(name)': the target display never came online; left the current displays enabled")
+                return
+            }
+            AspaceLog.profile.notice("survivor \(survivor, privacy: .public): online after \(waited, privacy: .public)s")
+        }
+
+        if mainUUID != nil {
+            // Declared main (e.g. `desk`): disable the others FIRST, then set the
+            // new main. Disabling the outgoing main display (the TV, which is
+            // main coming from `treadmill`) while it is still main keeps its HDMI
+            // link warm so soft-enable can wake it again later; promoting a new
+            // main first leaves the TV cold and un-wakeable.
+            try disableUnwanted()
+            try promoteMain()
+        } else {
+            // Sole survivor (e.g. `treadmill`): set main on the already-online
+            // survivor BEFORE disabling the others. Disabling them can briefly
+            // knock a TV offline, so doing setMain first guarantees it takes; the
+            // survivor then returns as the sole main display, cursor and menu bar
+            // intact. setMain only re-homes the origin, never the mode, so order
+            // here does not affect resolution.
+            try promoteMain()
+            try disableUnwanted()
+            // Collapsing to one display can leave the pointer stranded off the
+            // remaining screen (frozen cursor, error beeps); move it onto the
+            // new sole display.
+            backend.warpCursorToMainDisplay()
+            AspaceLog.profile.notice("warped cursor onto main display")
         }
 
         AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
