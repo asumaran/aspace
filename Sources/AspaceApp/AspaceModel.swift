@@ -126,16 +126,21 @@ final class AspaceModel: ObservableObject {
 
     func applyProfile(_ name: String) {
         AspaceLog.app.notice("applyProfile '\(name, privacy: .public)' requested")
-        do {
-            try ProfileRunner.run(profile: name, config: config)
-        } catch {
-            presentError("Failed to apply profile '\(name)': \(error)")
-        }
-        scheduleResolutionRestore(afterProfile: name)
-        // The reconfig callback will fire and refresh, but call it explicitly
-        // in case the callback is delayed.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refresh()
+        // Run the switch off the main thread: ProfileRunner does blocking
+        // CoreGraphics work and waits (a slow TV can take seconds to come
+        // online), which would otherwise freeze the menu. Failures are logged,
+        // not shown as a blocking modal — a transient display-config error must
+        // not lock up the app. After the await we are back on the main actor.
+        Task {
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    try ProfileRunner.run(profile: name, config: AspaceConfig.loadOrEmpty())
+                } catch {
+                    AspaceLog.app.error("apply profile '\(name, privacy: .public)' failed: \(String(describing: error), privacy: .public)")
+                }
+            }.value
+            scheduleResolutionRestore(afterProfile: name)
+            refresh()
         }
     }
 
@@ -188,14 +193,18 @@ final class AspaceModel: ObservableObject {
 
     func applyResolution(_ name: String) {
         AspaceLog.app.notice("applyResolution '\(name, privacy: .public)' requested")
-        do {
-            try ResolutionRunner.run(preset: name, config: config)
-            rememberResolution(name)
-        } catch {
-            presentError("Failed to apply resolution preset '\(name)': \(error)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refresh()
+        Task {
+            let applied = await Task.detached(priority: .userInitiated) { () -> Bool in
+                do {
+                    try ResolutionRunner.run(preset: name, config: AspaceConfig.loadOrEmpty())
+                    return true
+                } catch {
+                    AspaceLog.app.error("apply resolution '\(name, privacy: .public)' failed: \(String(describing: error), privacy: .public)")
+                    return false
+                }
+            }.value
+            if applied { rememberResolution(name) }
+            refresh()
         }
     }
 
@@ -234,16 +243,6 @@ final class AspaceModel: ObservableObject {
     }
 
     // MARK: - Internals
-
-    private func presentError(_ message: String) {
-        AspaceLog.app.error("\(message, privacy: .public)")
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "aspace error"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.runModal()
-    }
 
     private func registerForDisplayChanges() {
         let opaque = Unmanaged.passUnretained(self).toOpaque()

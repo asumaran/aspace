@@ -129,7 +129,7 @@ public enum ProfileRunner {
         // offline display is a no-op, which is what left a lone TV un-normalized
         // (stranded cursor / cropped desktop). Polling listDisplays() only reads
         // state, so it is safe in this window.
-        func promoteMain() throws {
+        func promoteMain() {
             guard let effectiveMain else { return }
             var waited = 0.0
             while waited < 6.0
@@ -138,15 +138,25 @@ public enum ProfileRunner {
                 waited += 0.5
             }
             AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): waited \(waited, privacy: .public)s for online")
-            do {
-                try backend.setMain(uuid: effectiveMain)
-                AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): ok")
-            } catch DisplayKitError.displayNotFound {
-                warn("cannot set main display \(effectiveMain): not currently connected (profile applied without setting main)")
-            } catch {
-                AspaceLog.profile.error("setMain \(effectiveMain, privacy: .public): failed: \(String(describing: error), privacy: .public)")
-                throw RunError.operation("main \(effectiveMain)", error)
+            // Retry setMain: CGCompleteDisplayConfiguration can transiently fail
+            // (CGError 1001) while the display system is still settling from the
+            // enables/disables. A failed setMain is not fatal to the topology
+            // change — warn and move on (the cursor warp still recovers the
+            // pointer) rather than aborting the whole switch with an error.
+            for attempt in 1...3 {
+                do {
+                    try backend.setMain(uuid: effectiveMain)
+                    AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): ok")
+                    return
+                } catch DisplayKitError.displayNotFound {
+                    warn("cannot set main display \(effectiveMain): not currently connected (profile applied without setting main)")
+                    return
+                } catch {
+                    AspaceLog.profile.error("setMain \(effectiveMain, privacy: .public): attempt \(attempt) failed: \(String(describing: error), privacy: .public)")
+                    if attempt < 3 { sleepFn(0.5) }
+                }
             }
+            warn("could not set main display \(effectiveMain) after retries (profile applied without setting main)")
         }
 
         func disableUnwanted() throws {
@@ -186,7 +196,7 @@ public enum ProfileRunner {
             // link warm so soft-enable can wake it again later; promoting a new
             // main first leaves the TV cold and un-wakeable.
             try disableUnwanted()
-            try promoteMain()
+            promoteMain()
         } else {
             // Sole survivor (e.g. `treadmill`): set main on the already-online
             // survivor BEFORE disabling the others. Disabling them can briefly
@@ -194,7 +204,7 @@ public enum ProfileRunner {
             // survivor then returns as the sole main display, cursor and menu bar
             // intact. setMain only re-homes the origin, never the mode, so order
             // here does not affect resolution.
-            try promoteMain()
+            promoteMain()
             try disableUnwanted()
             // Collapsing to one display can leave the pointer stranded off the
             // remaining screen (frozen cursor, error beeps); move it onto the
