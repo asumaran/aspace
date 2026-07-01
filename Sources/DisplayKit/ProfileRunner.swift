@@ -63,7 +63,6 @@ public enum ProfileRunner {
             FileHandle.standardError.write(Data("aspace: \(msg)\n".utf8))
         }
     ) throws {
-        AspaceLog.profile.info("Applying profile '\(name, privacy: .public)'")
         let known = backend.allKnownUUIDs()
         let toDisable: Set<String>
         let mainUUID: String?
@@ -85,12 +84,21 @@ public enum ProfileRunner {
         }
 
         let liveUUIDs = Set(backend.listDisplays().map { $0.uuid.uppercased() })
+        AspaceLog.profile.notice("""
+            plan profile='\(name, privacy: .public)' \
+            online=[\(liveUUIDs.sorted().joined(separator: ","), privacy: .public)] \
+            toEnable=[\(toEnable.sorted().joined(separator: ","), privacy: .public)] \
+            toDisable=[\(toDisable.sorted().joined(separator: ","), privacy: .public)] \
+            declaredMain=\(mainUUID ?? "-", privacy: .public)
+            """)
 
         for uuid in toEnable {
             do {
                 try backend.setEnabled(uuid: uuid, enabled: true)
+                AspaceLog.profile.notice("enable \(uuid, privacy: .public): ok")
             } catch {
                 if liveUUIDs.contains(uuid) {
+                    AspaceLog.profile.error("enable \(uuid, privacy: .public): failed while online: \(String(describing: error), privacy: .public)")
                     throw RunError.operation("enable \(uuid)", error)
                 }
                 warn("skipped enable of \(uuid): not currently connected")
@@ -106,6 +114,10 @@ public enum ProfileRunner {
         // entries (ghosts that could not be enabled) never count.
         let liveAfterEnable = Set(backend.listDisplays().map { $0.uuid.uppercased() })
         let effectiveMain = mainUUID ?? soleSurvivingDisplay(online: liveAfterEnable, toDisable: toDisable)
+        AspaceLog.profile.notice("""
+            after-enable online=[\(liveAfterEnable.sorted().joined(separator: ","), privacy: .public)] \
+            effectiveMain=\(effectiveMain ?? "-", privacy: .public)
+            """)
 
         // Disable the unwanted displays BEFORE setting main. Collapsing to the
         // final topology first lets the surviving display settle into its own
@@ -114,8 +126,14 @@ public enum ProfileRunner {
         // an inherited oversized scaled mode, rendering the desktop too large
         // and cropped.
         for uuid in toDisable where known.contains(uuid) {
-            do { try backend.setEnabled(uuid: uuid, enabled: false) }
-            catch { throw RunError.operation("disable \(uuid)", error) }
+            do {
+                try backend.setEnabled(uuid: uuid, enabled: false)
+                AspaceLog.profile.notice("disable \(uuid, privacy: .public): ok")
+            }
+            catch {
+                AspaceLog.profile.error("disable \(uuid, privacy: .public): failed: \(String(describing: error), privacy: .public)")
+                throw RunError.operation("disable \(uuid)", error)
+            }
         }
 
         // Now assign main / re-home the origin to (0,0). macOS makes a lone
@@ -125,14 +143,16 @@ public enum ProfileRunner {
             sleepFn(0.5)
             do {
                 try backend.setMain(uuid: effectiveMain)
+                AspaceLog.profile.notice("setMain \(effectiveMain, privacy: .public): ok")
             } catch DisplayKitError.displayNotFound {
                 warn("cannot set main display \(effectiveMain): not currently connected (profile applied without setting main)")
             } catch {
+                AspaceLog.profile.error("setMain \(effectiveMain, privacy: .public): failed: \(String(describing: error), privacy: .public)")
                 throw RunError.operation("main \(effectiveMain)", error)
             }
         }
 
-        AspaceLog.profile.info("Profile '\(name, privacy: .public)' applied")
+        AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
     }
 
     /// Pure prune logic that works on an in-memory registry. Internal so

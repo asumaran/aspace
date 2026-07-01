@@ -46,21 +46,23 @@ public enum ResolutionRunner {
         guard let preset = config.resolutions[name] else {
             throw RunError.presetNotFound(name)
         }
-        AspaceLog.profile.info("Applying resolution preset '\(name, privacy: .public)'")
+        AspaceLog.profile.notice("applying resolution preset '\(name, privacy: .public)' (\(preset.count) displays)")
 
         for (rawUUID, spec) in preset {
             let uuid = rawUUID.uppercased()
             do {
                 try backend.setMode(uuid: uuid, spec: spec)
+                AspaceLog.profile.notice("setMode \(uuid, privacy: .public) -> \(spec.stringValue, privacy: .public): ok")
             } catch DisplayKitError.displayNotFound {
                 warn("skipped resolution \(spec.stringValue) for \(uuid): not currently connected")
             } catch DisplayKitError.modeNotAvailable {
                 warn("skipped resolution \(spec.stringValue) for \(uuid): mode not available on this display")
             } catch {
+                AspaceLog.profile.error("setMode \(uuid, privacy: .public) -> \(spec.stringValue, privacy: .public): failed: \(String(describing: error), privacy: .public)")
                 throw RunError.operation("set mode \(uuid)", error)
             }
         }
 
-        AspaceLog.profile.info("Resolution preset '\(name, privacy: .public)' applied")
+        AspaceLog.profile.notice("resolution preset '\(name, privacy: .public)' applied")
     }
 }

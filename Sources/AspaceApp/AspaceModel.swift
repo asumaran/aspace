@@ -74,10 +74,30 @@ final class AspaceModel: ObservableObject {
         activeProfile = Self.detectActiveProfile(displays: displays, config: config)
         activeResolution = Self.detectActiveResolution(displays: displays, config: config)
         cliVersion = Self.detectCLIVersion()
-        AspaceLog.app.debug("refresh: \(self.displays.count) displays, profile=\(self.activeProfile ?? "custom", privacy: .public)")
+        logTopology()
+    }
+
+    /// Per-display snapshot of the settled state (it runs from `refresh`, after
+    /// the apply delay). Read-only — never reconfigures — so it is safe to emit
+    /// even right after a topology change. Read it with `Scripts/logs.sh`.
+    private func logTopology() {
+        AspaceLog.app.notice("""
+            topology: profile=\(self.activeProfile ?? "custom", privacy: .public) \
+            resolution=\(self.activeResolution ?? "custom", privacy: .public) \
+            online=\(self.displays.count)
+            """)
+        for d in displays {
+            let mode = DisplayKit.currentMode(uuid: d.uuid)
+            let res = mode.map { "\($0.pointWidth)x\($0.pointHeight)" } ?? "?"
+            AspaceLog.app.notice("""
+                  \(d.isMain ? "*" : "-", privacy: .public) \(d.name, privacy: .public) \
+                [\(d.uuid, privacy: .public)] enabled=\(d.isEnabled) mode=\(res, privacy: .public)
+                """)
+        }
     }
 
     func applyProfile(_ name: String) {
+        AspaceLog.app.notice("applyProfile '\(name, privacy: .public)' requested")
         do {
             try ProfileRunner.run(profile: name, config: config)
         } catch {
@@ -91,6 +111,7 @@ final class AspaceModel: ObservableObject {
     }
 
     func applyResolution(_ name: String) {
+        AspaceLog.app.notice("applyResolution '\(name, privacy: .public)' requested")
         do {
             try ResolutionRunner.run(preset: name, config: config)
         } catch {
@@ -216,6 +237,7 @@ private func displayReconfigurationCallback(
     userInfo: UnsafeMutableRawPointer?
 ) {
     guard let userInfo = userInfo else { return }
+    AspaceLog.app.notice("reconfig event: display=\(display) flags=0x\(String(flags.rawValue, radix: 16), privacy: .public)")
     let model = Unmanaged<AspaceModel>.fromOpaque(userInfo).takeUnretainedValue()
     Task { @MainActor in
         model.refresh()
