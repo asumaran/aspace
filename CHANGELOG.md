@@ -5,6 +5,20 @@ generated from the commit log by `Scripts/release.sh`; entries through v0.2.2
 follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project
 aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.3.0 (2026-07-01)
+
+* feat(app): add menu toggle to disable resolution restore (1746cde)
+* perf(profile): batch enable/disable into a single reconfiguration (82d5279)
+* docs+logging: expand the debugging toolkit (98b7534)
+* test(profile): simulate the TV's real failure modes (4f23668)
+* feat(cli): add --dry-run to preview a profile without applying it (6bae7a4)
+* fix(app): run profile/resolution switches off the main thread (9d91a88)
+* feat(app): restore the last resolution preset after a profile switch (003eff9)
+* fix(profile): reliable single-display switches, cursor recovery, detection (321fcfe)
+* docs: document log-based debugging (dcde3b9)
+* build(logging): add Scripts/logs.sh to read the unified log (6f9bbe8)
+* feat(logging): trace profile/resolution operations and topology (d949ee8)
+
 ## v0.2.3 (2026-06-30)
 
 * docs: drive releases and the changelog from Scripts/release.sh (13bba7e)
