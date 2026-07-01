@@ -98,15 +98,18 @@ option 2. Verify with:
   `open build/Aspace.app` runs the local build without replacing an installed
   copy.
 
-## Debugging with logs
+## Debugging
 
-Don't guess at display behavior — read the logs. aspace logs every
-profile/resolution operation (the plan, each enable/disable/setMain/setMode with
-its result) and a per-display topology snapshot (UUID, main, enabled, current
-mode) through `os.Logger`, subsystem `com.asumaran.aspace`, at the `.notice`
-level. macOS persists `.notice`, so the workflow is: have the user reproduce,
-then read what actually happened — no live capture needed. The same entries
-appear in Console.app (filter by the subsystem).
+Reach for these before guessing — display bugs are timing/hardware-specific and
+hard to reason about blind. In rough order of use:
+
+**1. Unified logs.** aspace logs every profile/resolution operation (the plan,
+each enable/disable/setMain/setMode with its result), the CoreGraphics
+reconfiguration events (with decoded flags), and a per-display topology snapshot
+(UUID, main, enabled, current mode) through `os.Logger`, subsystem
+`com.asumaran.aspace`, at the `.notice` level. macOS persists `.notice`, so the
+workflow is: have the user reproduce, then read what actually happened — no live
+capture needed. The same entries appear in Console.app (filter by the subsystem).
 
 ```bash
 Scripts/logs.sh                    # last 5 minutes
@@ -120,6 +123,28 @@ Keep new diagnostic logging at `.notice` and mark dynamic values
 results — never add CoreGraphics calls just to log; an extra reconfiguration in
 the volatile window right after a topology change can destabilize the display
 layout.
+
+**2. Dry-run — inspect a switch without touching displays.** `aspace profile
+<name> --dry-run` prints exactly what the switch would do (enable/disable, the
+main it would set) against the live topology, changing nothing. Use it to verify
+profile logic against real state without risking the display layout — the
+cheapest way to reason about a bug when live testing is expensive (a flaky TV,
+etc.).
+
+**3. Hangs — the frozen menu.** If the app locks up (menu items all disabled /
+unresponsive), sample its stack instead of guessing where it's stuck:
+
+```bash
+sample Aspace 3                    # 3s stack sample -> shows the blocked frame
+spindump Aspace 5                  # heavier, includes all threads
+```
+
+The apply paths run off the main actor precisely so a slow display can't freeze
+the UI; a hang usually means new blocking work landed on the main thread.
+
+**4. Live display details.** For a display's connection/EDID/mode specifics
+(useful for a TV misbehaving over HDMI): `system_profiler SPDisplaysDataType`.
+`aspace list` / `aspace modes <uuid>` give the aspace-level view.
 
 ## Conventions
 

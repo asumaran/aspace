@@ -313,9 +313,24 @@ private func displayReconfigurationCallback(
     userInfo: UnsafeMutableRawPointer?
 ) {
     guard let userInfo = userInfo else { return }
-    AspaceLog.app.notice("reconfig event: display=\(display) flags=0x\(String(flags.rawValue, radix: 16), privacy: .public)")
+    AspaceLog.app.notice("reconfig event: display=\(display) [\(reconfigFlagsDescription(flags), privacy: .public)]")
     let model = Unmanaged<AspaceModel>.fromOpaque(userInfo).takeUnretainedValue()
     Task { @MainActor in
         model.refresh()
     }
+}
+
+/// Human-readable summary of a display-reconfiguration event's flags, so the log
+/// shows *what* changed (added/removed/enabled/setMain/…) instead of a raw hex
+/// bitmask.
+private func reconfigFlagsDescription(_ flags: CGDisplayChangeSummaryFlags) -> String {
+    let known: [(CGDisplayChangeSummaryFlags, String)] = [
+        (.addFlag, "add"), (.removeFlag, "remove"),
+        (.enabledFlag, "enabled"), (.disabledFlag, "disabled"),
+        (.movedFlag, "moved"), (.setMainFlag, "setMain"), (.setModeFlag, "setMode"),
+        (.mirrorFlag, "mirror"), (.unMirrorFlag, "unMirror"),
+        (.beginConfigurationFlag, "begin"), (.desktopShapeChangedFlag, "desktopShape"),
+    ]
+    let parts = known.filter { flags.contains($0.0) }.map { $0.1 }
+    return parts.isEmpty ? "0x\(String(flags.rawValue, radix: 16))" : parts.joined(separator: ",")
 }

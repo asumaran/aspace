@@ -78,6 +78,7 @@ aspace disable <uuid>                 # take a display offline
 aspace enable  <uuid>                 # bring it back
 aspace main    <uuid>                 # make it the primary display
 aspace profile <name>                 # apply a profile (topology: on/off + main)
+aspace profile <name> --dry-run       # preview what it would do, change nothing
 aspace profiles                       # list available profile names
 aspace capture <name>                 # save the current topology as a profile
 aspace resolution <name>              # apply a resolution preset (scaling only)
