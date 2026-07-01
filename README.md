@@ -296,6 +296,23 @@ presets whose displays are all offline appear dimmed. The app listens for
 display-reconfiguration events, so changing resolution by any other means
 should update the menu on its own.
 
+### Logs
+
+aspace logs every profile/resolution operation and a per-display topology
+snapshot through the unified log (`os.Logger`, subsystem
+`com.asumaran.aspace`), at a level macOS persists. So when a display switch
+misbehaves, reproduce it and then read what actually happened — which displays
+were enabled/disabled, the main chosen, the modes set, and the resulting
+resolutions:
+
+```bash
+Scripts/logs.sh                 # last 5 minutes
+Scripts/logs.sh --stream        # follow live
+Scripts/logs.sh --last 10m      # custom window
+```
+
+The same entries are visible in Console.app by filtering on the subsystem.
+
 ## Releasing
 
 Cut a release with the helper script — it is the whole process:

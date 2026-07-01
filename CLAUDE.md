@@ -98,6 +98,29 @@ option 2. Verify with:
   `open build/Aspace.app` runs the local build without replacing an installed
   copy.
 
+## Debugging with logs
+
+Don't guess at display behavior — read the logs. aspace logs every
+profile/resolution operation (the plan, each enable/disable/setMain/setMode with
+its result) and a per-display topology snapshot (UUID, main, enabled, current
+mode) through `os.Logger`, subsystem `com.asumaran.aspace`, at the `.notice`
+level. macOS persists `.notice`, so the workflow is: have the user reproduce,
+then read what actually happened — no live capture needed. The same entries
+appear in Console.app (filter by the subsystem).
+
+```bash
+Scripts/logs.sh                    # last 5 minutes
+Scripts/logs.sh --last 2m          # custom window
+Scripts/logs.sh --stream           # follow live
+Scripts/logs.sh --category ProfileRunner   # one category (App, ProfileRunner, …)
+```
+
+Keep new diagnostic logging at `.notice` and mark dynamic values
+`privacy: .public` (the unified log redacts them otherwise). Log decisions and
+results — never add CoreGraphics calls just to log; an extra reconfiguration in
+the volatile window right after a topology change can destabilize the display
+layout.
+
 ## Conventions
 
 - Commit messages: Conventional Commits (`type(scope): description`). They are
