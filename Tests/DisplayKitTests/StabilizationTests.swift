@@ -144,6 +144,36 @@ import Testing
         #expect(backend.ops.isEmpty)
     }
 
+    // MARK: - Sole-display invariant (the app's always-on guard)
+
+    @Test func soleDisplayWithoutMainIsFlagged() {
+        let rows = [display(TV, enabled: true, main: false)]
+        #expect(ProfileRunner.soleDisplayNeedingMain(displays: rows) == TV)
+    }
+
+    @Test func soleDisplayAlreadyMainNeedsNothing() {
+        let rows = [display(TV, enabled: true, main: true)]
+        #expect(ProfileRunner.soleDisplayNeedingMain(displays: rows) == nil)
+    }
+
+    @Test func multipleDisplaysAreNeverFlagged() {
+        // With several displays there is no unambiguous owner for main;
+        // guessing could fight the user's arrangement.
+        let rows = [display(A, enabled: true, main: false), display(B, enabled: true, main: false)]
+        #expect(ProfileRunner.soleDisplayNeedingMain(displays: rows) == nil)
+    }
+
+    @Test func disabledDisplaysDoNotCountTowardSolitude() {
+        // An online-but-inactive display (e.g. mirrored) must not stop the
+        // active one from being promoted.
+        let rows = [display(TV, enabled: true, main: false), display(A, enabled: false, main: false)]
+        #expect(ProfileRunner.soleDisplayNeedingMain(displays: rows) == TV)
+    }
+
+    private func display(_ uuid: String, enabled: Bool, main: Bool) -> DisplayInfo {
+        DisplayInfo(id: 0, uuid: uuid, name: uuid, isEnabled: enabled, isMain: main, bounds: .zero)
+    }
+
     // MARK: - Restoring a lost main after an aborted switch
 
     @Test func abortedSwitchRestoresTheStolenMain() throws {

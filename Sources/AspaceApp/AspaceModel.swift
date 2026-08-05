@@ -97,6 +97,43 @@ final class AspaceModel: ObservableObject {
         if let active = activeResolution { rememberResolution(active) }
         cliVersion = Self.detectCLIVersion()
         logTopology()
+        scheduleSoleDisplayGuard()
+    }
+
+    private var soleDisplayGuardTask: Task<Void, Never>?
+
+    /// Always-on invariant: a sole online display must be the main. A flaky
+    /// HDMI link can re-enumerate the TV under a new UUID at ANY time — also
+    /// well after ProfileRunner's post-switch watch window closed (observed
+    /// live: a drop 8s after the topology was declared stable), leaving the
+    /// desktop on a display with no main and the cursor stranded. This runs
+    /// on every display reconfiguration, debounced 2s so it never injects a
+    /// reconfiguration into a still-churning window, and re-checks live state
+    /// before acting.
+    private func scheduleSoleDisplayGuard() {
+        soleDisplayGuardTask?.cancel()
+        guard let candidate = ProfileRunner.soleDisplayNeedingMain(displays: displays) else { return }
+        AspaceLog.app.notice("sole-display guard: \(candidate, privacy: .public) has no main; verifying in 2s")
+        soleDisplayGuardTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if Task.isCancelled { return }
+            let live = DisplayKit.listDisplays()
+            guard let current = ProfileRunner.soleDisplayNeedingMain(displays: live),
+                  current == candidate else {
+                AspaceLog.app.notice("sole-display guard: resolved itself; no action")
+                return
+            }
+            AspaceLog.app.notice("sole-display guard: promoting \(candidate, privacy: .public) and recovering cursor")
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    try DisplayKit.setMain(uuid: candidate)
+                    DisplayKit.warpCursorToMainDisplay()
+                } catch {
+                    AspaceLog.app.error("sole-display guard: setMain \(candidate, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+                }
+            }.value
+            self?.refresh()
+        }
     }
 
     private func rememberResolution(_ name: String) {

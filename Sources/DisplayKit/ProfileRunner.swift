@@ -356,6 +356,18 @@ public enum ProfileRunner {
         }
     }
 
+    /// The sole enabled display when it is not the main, or nil when the
+    /// topology is fine. Public: the menu bar app enforces this continuously
+    /// (debounced on display reconfiguration events), because a flaky HDMI
+    /// link can re-enumerate a TV long after any switch-time watch window has
+    /// closed — leaving a lone display without main (frozen last frame,
+    /// stranded cursor) that only an always-on guard can catch.
+    public static func soleDisplayNeedingMain(displays: [DisplayInfo]) -> String? {
+        let enabled = displays.filter { $0.isEnabled }
+        guard enabled.count == 1, let sole = enabled.first, !sole.isMain else { return nil }
+        return sole.uuid
+    }
+
     // MARK: - Post-apply stabilization
 
     /// The lone online display that should inherit main after `expectedMain`
