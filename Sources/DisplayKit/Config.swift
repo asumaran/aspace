@@ -20,11 +20,13 @@ import Foundation
 /// {
 ///   "profiles": {
 ///     "treadmill": {
-///       "disable": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."]
+///       "disable": ["CD233C7A-...", "A98DE3E9-...", "204E366C-..."],
+///       "audioOutput": "LG TV"
 ///     },
 ///     "desk": {
 ///       "disable": ["6B111247-..."],
-///       "main":     "CD233C7A-..."
+///       "main":     "CD233C7A-...",
+///       "audioOutput": "External Headphones"
 ///     }
 ///   },
 ///   "resolutions": {
@@ -87,10 +89,16 @@ public struct AspaceConfig: Codable {
     public struct Profile: Codable {
         public let disable: [String]
         public let main: String?
+        /// Audio output device to make the system default after applying the
+        /// profile, matched against the device names from `aspace audio-outputs`
+        /// (case-insensitive; a substring works when it matches one device).
+        /// Optional — profiles without it leave the audio output untouched.
+        public let audioOutput: String?
 
-        public init(disable: [String] = [], main: String? = nil) {
+        public init(disable: [String] = [], main: String? = nil, audioOutput: String? = nil) {
             self.disable = disable
             self.main = main
+            self.audioOutput = audioOutput
         }
     }
 

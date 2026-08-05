@@ -10,6 +10,7 @@ public enum AspaceLog {
     public static let displayKit = Logger(subsystem: subsystem, category: "DisplayKit")
     public static let profile    = Logger(subsystem: subsystem, category: "ProfileRunner")
     public static let registry   = Logger(subsystem: subsystem, category: "Registry")
+    public static let audio      = Logger(subsystem: subsystem, category: "Audio")
     public static let cli        = Logger(subsystem: subsystem, category: "CLI")
     public static let app        = Logger(subsystem: subsystem, category: "App")
 }

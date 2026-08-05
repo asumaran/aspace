@@ -4,13 +4,15 @@
       "disable": [
         "REPLACE-WITH-DESK-MONITOR-UUID-1",
         "REPLACE-WITH-DESK-MONITOR-UUID-2"
-      ]
+      ],
+      "audioOutput": "LG TV"
     },
     "desk": {
       "disable": [
         "REPLACE-WITH-TV-UUID"
       ],
-      "main": "REPLACE-WITH-DESK-MAIN-UUID"
+      "main": "REPLACE-WITH-DESK-MAIN-UUID",
+      "audioOutput": "External Headphones"
     }
   },
   "resolutions": {

@@ -44,6 +44,26 @@ public enum ProfileRunner {
         try run(profile: name, config: config, backend: LiveDisplayBackend(), sleep: liveSleep)
     }
 
+    /// Applies the profile's `audioOutput` (if declared) after the topology
+    /// change. Runs the same non-destructive policy as AudioRunner: a missing
+    /// or ambiguous device warns and leaves the output unchanged, and even a
+    /// CoreAudio failure only warns — the displays switched fine, and audio
+    /// must not retroactively fail the profile.
+    static func applyAudio(
+        profile name: String,
+        config: AspaceConfig,
+        audio: AudioBackend,
+        sleep sleepFn: (TimeInterval) -> Void,
+        warn: (String) -> Void
+    ) {
+        guard let deviceName = config.profiles[name]?.audioOutput else { return }
+        do {
+            try AudioRunner.run(deviceNamed: deviceName, backend: audio, sleep: sleepFn, warn: warn)
+        } catch {
+            warn("could not set audio output \"\(deviceName)\": \(error)")
+        }
+    }
+
     /// What applying a profile *would* do, computed read-only against the live
     /// topology — nothing is enabled, disabled, or re-homed. Lets you preview a
     /// switch (`aspace profile <name> --dry-run`) without risking the display
@@ -58,6 +78,8 @@ public enum ProfileRunner {
         /// The main we predict will end up set: the declared main, or the sole
         /// surviving display if the switch leaves exactly one on.
         public let effectiveMain: String?
+        /// The audio output the profile would make default, verbatim from config.
+        public let audioOutput: String?
     }
 
     public static func plan(profile name: String, config: AspaceConfig) -> Plan? {
@@ -68,12 +90,15 @@ public enum ProfileRunner {
         let known = backend.allKnownUUIDs()
         let toDisable: Set<String>
         let declaredMain: String?
+        let audioOutput: String?
         if name == AspaceConfig.allProfileName {
             toDisable = []
             declaredMain = nil
+            audioOutput = nil
         } else if let profile = config.profiles[name] {
             toDisable = Set(profile.disable.map { $0.uppercased() })
             declaredMain = profile.main?.uppercased()
+            audioOutput = profile.audioOutput
         } else {
             return nil
         }
@@ -90,7 +115,8 @@ public enum ProfileRunner {
             toEnable: toEnable.sorted(),
             toDisable: toDisable.sorted(),
             declaredMain: declaredMain,
-            effectiveMain: effectiveMain
+            effectiveMain: effectiveMain,
+            audioOutput: audioOutput
         )
     }
 
@@ -113,6 +139,7 @@ public enum ProfileRunner {
         profile name: String,
         config: AspaceConfig,
         backend: DisplayBackend,
+        audio: AudioBackend = LiveAudioBackend(),
         sleep sleepFn: (TimeInterval) -> Void = { _ in },
         warn: (String) -> Void = { msg in
             AspaceLog.profile.warning("\(msg, privacy: .public)")
@@ -277,6 +304,12 @@ public enum ProfileRunner {
             backend.warpCursorToMainDisplay()
             AspaceLog.profile.notice("warped cursor onto main display")
         }
+
+        // Audio last: an HDMI TV's audio device only registers with CoreAudio
+        // once the display link is up, so it can trail the topology change by
+        // seconds — AudioRunner waits for it. Setting the default output is
+        // pure CoreAudio; it cannot disturb the just-settled display layout.
+        applyAudio(profile: name, config: config, audio: audio, sleep: sleepFn, warn: warn)
 
         AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
     }

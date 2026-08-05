@@ -17,6 +17,23 @@ import Testing
         #expect(decoded.profiles["desk"]?.main == "DDD")
     }
 
+    @Test func profileAudioOutputRoundtripsAndDefaultsToNil() throws {
+        let original = AspaceConfig(profiles: [
+            "treadmill": .init(disable: ["AAA"], audioOutput: "LG TV"),
+            "desk":      .init(disable: ["BBB"], main: "CCC"),
+        ])
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(AspaceConfig.self, from: data)
+
+        #expect(decoded.profiles["treadmill"]?.audioOutput == "LG TV")
+        #expect(decoded.profiles["desk"]?.audioOutput == nil)
+        // Profiles without an audioOutput must not serialize the key at all,
+        // so existing hand-edited configs keep their shape: only the treadmill
+        // profile mentions it.
+        let json = String(data: data, encoding: .utf8)!
+        #expect(json.components(separatedBy: "audioOutput").count == 2)
+    }
+
     @Test func legacyFileWithoutSchemaVersionLoadsAsCurrent() throws {
         let json = #"""
         { "profiles": { "test": { "disable": [] } } }
