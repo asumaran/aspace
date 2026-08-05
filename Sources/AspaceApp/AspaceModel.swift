@@ -18,6 +18,7 @@ final class AspaceModel: ObservableObject {
     @Published private(set) var activeResolution: String?
     @Published private(set) var cliVersion: String?
 
+
     /// The most recently active resolution preset. Profiles only change
     /// topology, and macOS brings re-enabled displays back at inconsistent
     /// default modes, so switching back to `desk` loses the preset. We remember
@@ -221,6 +222,13 @@ final class AspaceModel: ObservableObject {
         }
     }
 
+    /// Read-only summary for the menu's "Profile Details" submenu: what the
+    /// profile would leave on/off, its main, and its audio output. Derived from
+    /// the same snapshot the menu already renders (no live queries).
+    func profileSummary(_ name: String) -> ProfileSummary.Summary? {
+        ProfileSummary.summarize(profile: name, config: config, displays: displayRows)
+    }
+
     func setRestoreResolutionEnabled(_ enabled: Bool) {
         guard enabled != restoreResolutionEnabled else { return }
         restoreResolutionEnabled = enabled
@@ -234,6 +242,23 @@ final class AspaceModel: ObservableObject {
         let dir = AspaceConfig.storeURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         NSWorkspace.shared.open(dir)
+    }
+
+    /// Copy a display UUID from the option-revealed diagnostic submenus, for
+    /// pasting into config.json.
+    func copyToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Open config.json with the editor associated to the file type. Falls
+    /// back to the folder when the file doesn't exist yet (nothing to open).
+    func openConfigFile() {
+        if FileManager.default.fileExists(atPath: AspaceConfig.storeURL.path) {
+            NSWorkspace.shared.open(AspaceConfig.storeURL)
+        } else {
+            openConfigFolder()
+        }
     }
 
     func showAbout() {
