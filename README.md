@@ -84,6 +84,8 @@ aspace capture <name>                 # save the current topology as a profile
 aspace resolution <name>              # apply a resolution preset (scaling only)
 aspace resolutions                    # list available resolution preset names
 aspace capture-resolution <name>      # save current resolutions as a preset
+aspace audio <name>                   # set the default audio output device
+aspace audio-outputs                  # list audio output devices (* = default)
 aspace is-enabled <uuid>              # "on" or "off"
 aspace is-main    <uuid>              # "true" or "false"
 ```
@@ -117,11 +119,13 @@ would leave zero displays enabled, aspace refuses to apply it.
 {
   "profiles": {
     "focus": {
-      "disable": ["B2C3D4E5-...", "C3D4E5F6-..."]
+      "disable": ["B2C3D4E5-...", "C3D4E5F6-..."],
+      "audioOutput": "LG TV"
     },
     "workstation": {
       "disable": ["C3D4E5F6-..."],
-      "main":    "B2C3D4E5-..."
+      "main":    "B2C3D4E5-...",
+      "audioOutput": "External Headphones"
     }
   },
   "resolutions": {
@@ -147,6 +151,17 @@ single-display profile can strand the pointer in the old multi-display
 coordinate space). When two or more displays remain and `main` is omitted,
 macOS keeps the previous main where possible; declare `main` explicitly only
 when you care which one is the primary.
+
+`audioOutput` is optional. When set, applying the profile also makes that
+device the system's default audio output — so switching to a TV profile can
+route sound to the TV and switching back to the desk can route it to your
+headphones. The value is matched against the device names from
+`aspace audio-outputs`, case-insensitively; a substring works as long as it
+matches exactly one device (`"LG TV"` finds `"LG TV SSCR2"`). aspace waits up
+to 10 seconds for the device to register (an HDMI TV's audio appears a little
+after its display comes online). In line with the non-destructive philosophy,
+a device that never shows up — or an ambiguous name — logs a warning and
+leaves the current output unchanged; it never fails the profile switch.
 
 ### Resolution presets
 
@@ -196,12 +211,21 @@ enabled (the built-in `all` profile), and `rectangle.on.rectangle.slash`
 when the live layout matches no configured profile. A few well-known
 profile names get themed icons baked in (`treadmill` → `figure.walk`,
 `desk` → `display`); any other name falls back to the generic icon. Open
-the menu to switch profiles or jump to the config folder. A `Displays`
-submenu lists each screen with a colored status dot — 🟢 active, ⚪️ inactive
-or offline — and the main display is tagged `(main)`. It also surfaces
-displays referenced by your config (a profile's `disable`/`main`, or a
-resolution preset) that are disconnected right now, so a powered-off monitor
-you manage still appears instead of vanishing.
+the menu to switch profiles or edit the config. `Edit Config…` opens
+`config.json` with the editor associated to the file type (or the config
+folder if the file doesn't exist yet). The menu refreshes itself when opened,
+so hand edits to `config.json` show up immediately.
+
+Holding **Option** reveals two diagnostic submenus — live, like Finder's
+Go menu revealing "Library": press to show, release to hide, with the menu
+open or by option-clicking the icon. `Displays` lists each screen with a status dot — 🟢
+active, ⚪️ inactive or offline — its UUID, and `(main)` on the main display;
+it also surfaces config-referenced displays that are disconnected right now,
+so a powered-off monitor you manage still appears instead of vanishing.
+`Profile Details` shows, per profile, what applying it would configure: which
+displays it leaves on (🟢) or turns off (⚪️), the one that becomes main, and
+the audio output it routes to (the profile's `audioOutput`, when set).
+Clicking any display row copies its UUID, ready to paste into `config.json`.
 
 ## How it works (and how it might break)
 
