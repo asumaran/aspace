@@ -305,13 +305,122 @@ public enum ProfileRunner {
             AspaceLog.profile.notice("warped cursor onto main display")
         }
 
-        // Audio last: an HDMI TV's audio device only registers with CoreAudio
-        // once the display link is up, so it can trail the topology change by
-        // seconds — AudioRunner waits for it. Setting the default output is
-        // pure CoreAudio; it cannot disturb the just-settled display layout.
+        // Audio first: an HDMI TV's audio device only registers with CoreAudio
+        // once the display link is up, so AudioRunner already waits for it on
+        // its own — running it before the stabilization watch keeps the audio
+        // switch as prompt as the topology change instead of trailing the
+        // watch window.
         applyAudio(profile: name, config: config, audio: audio, sleep: sleepFn, warn: warn)
 
+        // A TV can renegotiate its HDMI link right after the switch and come
+        // back under a DIFFERENT hardware UUID (observed live: the LG dropped
+        // ~200ms after a successful apply and re-enumerated as a display the
+        // config never mentions). The switch itself succeeded, but the desktop
+        // then sits on a display nothing manages — no main assigned, cursor
+        // stranded in the old coordinate space. Watch the settled topology
+        // briefly and adopt such a replacement as the main.
+        stabilize(expectedMain: effectiveMain, backend: backend, sleep: sleepFn, warn: warn)
+
         AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
+    }
+
+    // MARK: - Post-apply stabilization
+
+    /// The lone online display that should inherit main after `expectedMain`
+    /// vanished, or nil when the topology needs no correction. Promoting the
+    /// only visible display is always safe (it just normalizes the origin), so
+    /// the rule deliberately doesn't care whether the replacement is known to
+    /// the config — a re-enumerated TV never is. Both inputs uppercased.
+    static func stabilizationCandidate(expectedMain: String, online: Set<String>) -> String? {
+        guard !online.contains(expectedMain), online.count == 1 else { return nil }
+        return online.first
+    }
+
+    /// Watch the topology after a switch and re-home main if the display we
+    /// expected to be main disappears and a single replacement shows up (a
+    /// display re-enumerating under a new UUID). A candidate must be seen on
+    /// two consecutive polls before being promoted, so a display that is
+    /// merely mid-teardown during the volatile window doesn't get an extra
+    /// reconfiguration thrown at it. Returns once the main has been CONTINUOUSLY
+    /// stable for `minWatch` (the clock restarts after each adoption, since a
+    /// settling link can re-enumerate more than once) or when the absolute
+    /// `maxWatch` window runs out; failures only warn — the switch itself
+    /// already succeeded.
+    static func stabilize(
+        expectedMain: String?,
+        backend: DisplayBackend,
+        minWatch: TimeInterval = 2.0,
+        maxWatch: TimeInterval = 10.0,
+        sleep sleepFn: (TimeInterval) -> Void = { _ in },
+        warn: (String) -> Void = { msg in
+            AspaceLog.profile.warning("\(msg, privacy: .public)")
+            FileHandle.standardError.write(Data("aspace: \(msg)\n".utf8))
+        }
+    ) {
+        guard var anchor = expectedMain?.uppercased() else { return }
+        let pollInterval = 0.5
+        let stablePollsNeeded = Int(minWatch / pollInterval)
+        var elapsed = 0.0
+        var stablePolls = 0
+        var pendingReplacement: String?
+        var adopted = false
+
+        // The cursor is re-warped once the adopted display has settled, not
+        // only at adoption time: warping inside the re-enumeration window can
+        // target a main that is still mid-transaction and land nowhere,
+        // which left the desktop visible but the cursor stranded (observed
+        // live). A warp on a settled topology is reliable.
+        func finish(reason: String) {
+            if adopted { backend.warpCursorToMainDisplay() }
+            AspaceLog.profile.notice("stabilize: \(reason, privacy: .public) (main \(anchor, privacy: .public)\(adopted ? ", cursor re-warped" : "", privacy: .public))")
+        }
+
+        while elapsed < maxWatch {
+            let online = Set(backend.listDisplays().map { $0.uuid.uppercased() })
+            if online.contains(anchor) {
+                pendingReplacement = nil
+                stablePolls += 1
+                if stablePolls >= stablePollsNeeded {
+                    finish(reason: "stable after \(elapsed)s")
+                    return
+                }
+            } else if let candidate = stabilizationCandidate(expectedMain: anchor, online: online) {
+                stablePolls = 0
+                if candidate == pendingReplacement {
+                    AspaceLog.profile.notice("stabilize: main \(anchor, privacy: .public) gone; adopting lone replacement \(candidate, privacy: .public)")
+                    // Retry like promoteMain does: CGCompleteDisplayConfiguration
+                    // fails transiently while the display system settles.
+                    var promoted = false
+                    for attempt in 1...3 {
+                        do {
+                            try backend.setMain(uuid: candidate)
+                            promoted = true
+                            break
+                        } catch {
+                            AspaceLog.profile.error("stabilize: setMain \(candidate, privacy: .public) attempt \(attempt) failed: \(String(describing: error), privacy: .public)")
+                            if attempt < 3 { sleepFn(pollInterval); elapsed += pollInterval }
+                        }
+                    }
+                    if promoted {
+                        backend.warpCursorToMainDisplay()
+                        anchor = candidate
+                        adopted = true
+                        pendingReplacement = nil
+                    } else {
+                        // Leave the candidate pending so the next poll retries.
+                        warn("stabilize: could not promote \(candidate) after retries")
+                    }
+                } else {
+                    pendingReplacement = candidate
+                }
+            } else {
+                stablePolls = 0
+                pendingReplacement = nil
+            }
+            sleepFn(pollInterval)
+            elapsed += pollInterval
+        }
+        finish(reason: "watch window over")
     }
 
     /// Pure prune logic that works on an in-memory registry. Internal so

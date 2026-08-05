@@ -11,6 +11,7 @@ final class FakeBackend: DisplayBackend {
         case disable(String)
         case setMain(String)
         case setMode(String, String)
+        case warpCursor
     }
 
     enum Failure: Error, Equatable {
@@ -123,6 +124,10 @@ final class FakeBackend: DisplayBackend {
             throw DisplayKitError.displayNotFound(key)
         }
         ops.append(.setMain(key))
+    }
+
+    func warpCursorToMainDisplay() {
+        ops.append(.warpCursor)
     }
 
     func setMode(uuid: String, spec: AspaceConfig.ModeSpec) throws {

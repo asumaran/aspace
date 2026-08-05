@@ -236,6 +236,13 @@ Clicking any display row copies its UUID, ready to paste into `config.json`.
   `CGConfigureDisplayWithDisplayMode`. Only modes the panel actually reports
   can be applied, so an unsupported resolution is impossible to force — it's
   skipped with a warning.
+- **Post-switch stabilization**: a TV can renegotiate its HDMI link right
+  after a switch and re-enumerate under a *different* hardware UUID, leaving
+  the desktop on a display the config never mentions (no main, stranded
+  cursor). After applying a profile, aspace watches the topology for up to
+  10 seconds; if the expected main vanishes and a single replacement shows
+  up on two consecutive polls, it adopts that display as main and recovers
+  the cursor. The watch ends once the main has been stable for 2 seconds.
 - **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol
   (CoreGraphics, re-exported from `SkyLight.framework`). Apple has shipped
   it stable for years, but it's undocumented and could disappear in a
