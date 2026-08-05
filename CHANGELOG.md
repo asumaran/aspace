@@ -6,6 +6,20 @@ All notable changes to this project are documented here, newest first, under a
 generated from the commit log by `Scripts/release.sh`. The project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.0 (2026-08-05)
+
+* feat: make post-switch stabilization optional (3a7ac5b)
+* feat(app): always-on sole-display guard (5221040)
+* fix(displaykit): restore main display after aborted switch (c1a4239)
+* feat(displaykit): post-switch stabilization watchdog (41e73ab)
+* docs(readme): document audio and new menu behavior (c1ede95)
+* feat(app): rebuild menu bar dropdown in AppKit (5b3a4c6)
+* feat(displaykit): add profile summary helper (1a45b09)
+* feat(cli): add audio and audio-outputs commands (b33b670)
+* feat(displaykit): per-profile audio output switching (5f9f311)
+* build(release): gate on version-format consistency (c832893)
+* docs(changelog): normalize version heading format (41708ec)
+
 ## 0.3.0 (2026-07-01)
 
 * feat(app): add menu toggle to disable resolution restore (1746cde)
