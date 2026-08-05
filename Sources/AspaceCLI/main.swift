@@ -17,6 +17,8 @@ struct Aspace: ParsableCommand {
             Profile.self,
             Profiles.self,
             Capture.self,
+            Audio.self,
+            AudioOutputs.self,
             Resolution.self,
             Resolutions.self,
             CaptureResolution.self,
@@ -185,6 +187,9 @@ extension Aspace {
             } else {
                 print("  main:\n    (unchanged)")
             }
+            if let audio = plan.audioOutput {
+                print("  audio output:\n    ~ \(audio)")
+            }
         }
     }
 
@@ -236,6 +241,40 @@ extension Aspace {
             try updated.save()
 
             print("Captured profile \"\(name)\": main=\(mainUUID ?? "none"), \(off.count) off.")
+        }
+    }
+
+    struct Audio: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "audio",
+            abstract: """
+                Set the default audio output device by name (see \
+                `aspace audio-outputs`). Case-insensitive; a substring works \
+                when it matches exactly one device.
+                """
+        )
+
+        @Argument(help: "Output device name from `aspace audio-outputs`.")
+        var name: String
+
+        func run() throws {
+            try AudioRunner.run(deviceNamed: name)
+        }
+    }
+
+    struct AudioOutputs: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "audio-outputs",
+            abstract: "List audio output devices. A `*` marks the current default."
+        )
+
+        func run() throws {
+            let defaultUID = AudioRunner.defaultOutputUID()
+            print("\(pad("NAME", 32)) \(pad("DEFAULT", 8)) UID")
+            for device in AudioRunner.outputDevices().sorted(by: { $0.name < $1.name }) {
+                let marker = device.uid == defaultUID ? "*" : ""
+                print("\(pad(device.name, 32)) \(pad(marker, 8)) \(device.uid)")
+            }
         }
     }
 
