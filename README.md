@@ -243,6 +243,8 @@ Clicking any display row copies its UUID, ready to paste into `config.json`.
   10 seconds; if the expected main vanishes and a single replacement shows
   up on two consecutive polls, it adopts that display as main and recovers
   the cursor. The watch ends once the main has been stable for 2 seconds.
+  It can be turned off (saving its ~2s tail) with the menu's "Stabilize
+  display after switch" toggle or the CLI's `--no-stabilize` flag.
 - **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol
   (CoreGraphics, re-exported from `SkyLight.framework`). Apple has shipped
   it stable for years, but it's undocumented and could disappear in a

@@ -157,6 +157,9 @@ extension Aspace {
         @Flag(name: .long, help: "Preview what the profile would do, changing nothing.")
         var dryRun = false
 
+        @Flag(name: .long, help: "Skip the post-switch stabilization watch (~2s faster; see README).")
+        var noStabilize = false
+
         func run() throws {
             let config = AspaceConfig.loadOrEmpty()
             if dryRun {
@@ -166,7 +169,7 @@ extension Aspace {
                 printPlan(plan)
                 return
             }
-            try ProfileRunner.run(profile: name, config: config)
+            try ProfileRunner.run(profile: name, config: config, stabilization: !noStabilize)
         }
 
         private func printPlan(_ plan: ProfileRunner.Plan) {

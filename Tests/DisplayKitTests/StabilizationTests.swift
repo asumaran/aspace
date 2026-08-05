@@ -144,6 +144,24 @@ import Testing
         #expect(backend.ops.isEmpty)
     }
 
+    @Test func stabilizationCanBeDisabledPerRun() throws {
+        // With the watch off, the run must end right after the switch: no
+        // 0.5s watch polls (the only sleep left is the settle between the
+        // enable and disable phases).
+        let STUDIO = "STUDIO-UUID"
+        let backend = FakeBackend(online: [STUDIO, TV], known: [STUDIO, TV])
+        var sleeps: [TimeInterval] = []
+        try ProfileRunner.run(
+            profile: "treadmill",
+            config: AspaceConfig(profiles: ["treadmill": .init(disable: [STUDIO])]),
+            backend: backend,
+            stabilization: false,
+            sleep: { sleeps.append($0) }
+        )
+        #expect(!sleeps.contains(0.5), "no watch polls when stabilization is off")
+        #expect(backend.online == [TV], "the switch itself still happens")
+    }
+
     // MARK: - Sole-display invariant (the app's always-on guard)
 
     @Test func soleDisplayWithoutMainIsFlagged() {

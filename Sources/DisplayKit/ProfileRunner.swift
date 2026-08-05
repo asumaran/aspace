@@ -39,9 +39,14 @@ public enum ProfileRunner {
     }
 
     /// Public production entry point — uses the real CoreGraphics backend
-    /// and sleeps briefly between phases to let macOS settle.
-    public static func run(profile name: String, config: AspaceConfig) throws {
-        try run(profile: name, config: config, backend: LiveDisplayBackend(), sleep: liveSleep)
+    /// and sleeps briefly between phases to let macOS settle. `stabilization`
+    /// turns the post-switch watch off (user-toggleable escape hatch: it
+    /// costs a couple of seconds at the tail of every switch).
+    public static func run(profile name: String, config: AspaceConfig, stabilization: Bool = true) throws {
+        try run(
+            profile: name, config: config, backend: LiveDisplayBackend(),
+            stabilization: stabilization, sleep: liveSleep
+        )
     }
 
     /// Applies the profile's `audioOutput` (if declared) after the topology
@@ -140,6 +145,7 @@ public enum ProfileRunner {
         config: AspaceConfig,
         backend: DisplayBackend,
         audio: AudioBackend = LiveAudioBackend(),
+        stabilization: Bool = true,
         sleep sleepFn: (TimeInterval) -> Void = { _ in },
         warn: (String) -> Void = { msg in
             AspaceLog.profile.warning("\(msg, privacy: .public)")
@@ -326,7 +332,9 @@ public enum ProfileRunner {
         // then sits on a display nothing manages — no main assigned, cursor
         // stranded in the old coordinate space. Watch the settled topology
         // briefly and adopt such a replacement as the main.
-        stabilize(expectedMain: effectiveMain, backend: backend, sleep: sleepFn, warn: warn)
+        if stabilization {
+            stabilize(expectedMain: effectiveMain, backend: backend, sleep: sleepFn, warn: warn)
+        }
 
         AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
     }

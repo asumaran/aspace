@@ -36,10 +36,18 @@ final class AspaceModel: ObservableObject {
     @Published private(set) var restoreResolutionEnabled: Bool
     private static let restoreResolutionKey = "aspace.restoreResolutionEnabled"
 
+    /// Whether profile switches run the post-switch stabilization watch (see
+    /// `ProfileRunner.stabilize`). User-toggleable and persisted; defaults on.
+    /// Turning it off shaves the ~2s watch at the tail of every switch, at
+    /// the cost of not catching a display that re-enumerates right after.
+    @Published private(set) var stabilizationEnabled: Bool
+    private static let stabilizationKey = "aspace.stabilizationEnabled"
+
     init() {
         lastResolution = UserDefaults.standard.string(forKey: Self.lastResolutionKey)
         // Absent key -> default on (preserve the existing behavior).
         restoreResolutionEnabled = UserDefaults.standard.object(forKey: Self.restoreResolutionKey) as? Bool ?? true
+        stabilizationEnabled = UserDefaults.standard.object(forKey: Self.stabilizationKey) as? Bool ?? true
         registerForDisplayChanges()
         refresh()
     }
@@ -178,10 +186,14 @@ final class AspaceModel: ObservableObject {
         // online), which would otherwise freeze the menu. Failures are logged,
         // not shown as a blocking modal — a transient display-config error must
         // not lock up the app. After the await we are back on the main actor.
+        let stabilization = stabilizationEnabled
         Task {
             await Task.detached(priority: .userInitiated) {
                 do {
-                    try ProfileRunner.run(profile: name, config: AspaceConfig.loadOrEmpty())
+                    try ProfileRunner.run(
+                        profile: name, config: AspaceConfig.loadOrEmpty(),
+                        stabilization: stabilization
+                    )
                 } catch {
                     AspaceLog.app.error("apply profile '\(name, privacy: .public)' failed: \(String(describing: error), privacy: .public)")
                 }
@@ -264,6 +276,13 @@ final class AspaceModel: ObservableObject {
     /// the same snapshot the menu already renders (no live queries).
     func profileSummary(_ name: String) -> ProfileSummary.Summary? {
         ProfileSummary.summarize(profile: name, config: config, displays: displayRows)
+    }
+
+    func setStabilizationEnabled(_ enabled: Bool) {
+        guard enabled != stabilizationEnabled else { return }
+        stabilizationEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.stabilizationKey)
+        AspaceLog.app.notice("stabilization setting: \(enabled ? "on" : "off", privacy: .public)")
     }
 
     func setRestoreResolutionEnabled(_ enabled: Bool) {

@@ -105,13 +105,21 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
                 menu.addItem(item)
             }
 
-            menu.addItem(.separator())
+        }
+
+        menu.addItem(.separator())
+        if !resolutions.isEmpty {
             let restore = actionItem("Restore resolution after switch") { [model] in
                 model.setRestoreResolutionEnabled(!model.restoreResolutionEnabled)
             }
             restore.state = model.restoreResolutionEnabled ? .on : .off
             menu.addItem(restore)
         }
+        let stabilize = actionItem("Stabilize display after switch") { [model] in
+            model.setStabilizationEnabled(!model.stabilizationEnabled)
+        }
+        stabilize.state = model.stabilizationEnabled ? .on : .off
+        menu.addItem(stabilize)
 
         menu.addItem(.separator())
         addDiagnostics()
