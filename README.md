@@ -79,6 +79,7 @@ aspace enable  <uuid>                 # bring it back
 aspace main    <uuid>                 # make it the primary display
 aspace profile <name>                 # apply a profile (topology: on/off + main)
 aspace profile <name> --dry-run       # preview what it would do, change nothing
+aspace profile <name> --no-stabilize  # skip the post-switch stabilization watch
 aspace profiles                       # list available profile names
 aspace capture <name>                 # save the current topology as a profile
 aspace resolution <name>              # apply a resolution preset (scaling only)
@@ -86,6 +87,7 @@ aspace resolutions                    # list available resolution preset names
 aspace capture-resolution <name>      # save current resolutions as a preset
 aspace audio <name>                   # set the default audio output device
 aspace audio-outputs                  # list audio output devices (* = default)
+aspace prune [days]                   # drop registry entries unseen for N days
 aspace is-enabled <uuid>              # "on" or "off"
 aspace is-main    <uuid>              # "true" or "false"
 ```
@@ -227,6 +229,14 @@ displays it leaves on (🟢) or turns off (⚪️), the one that becomes main, a
 the audio output it routes to (the profile's `audioOutput`, when set).
 Clicking any display row copies its UUID, ready to paste into `config.json`.
 
+Between the presets and the diagnostics sits a small settings group, persisted
+across launches. **Restore resolution after switch** (shown only when the
+config defines resolution presets) re-applies the last used resolution preset
+once a profile switch brings that preset's displays back online — so returning
+to the desk also returns your monitors to the scaling you had. **Stabilize
+display after switch** toggles the post-switch stabilization watch described
+under "How it works"; the app's sole-display guard stays active either way.
+
 ## How it works (and how it might break)
 
 - **Listing / detection**: only public CoreGraphics + `NSScreen` APIs.
@@ -245,6 +255,24 @@ Clicking any display row copies its UUID, ready to paste into `config.json`.
   the cursor. The watch ends once the main has been stable for 2 seconds.
   It can be turned off (saving its ~2s tail) with the menu's "Stabilize
   display after switch" toggle or the CLI's `--no-stabilize` flag.
+- **Sole-display guard** (menu bar app only): the same HDMI renegotiation can
+  strike long after a switch settled, again leaving a lone display without a
+  main and the cursor stranded. On every display-reconfiguration event the app
+  checks whether a single online display lacks a main; after a 2-second
+  debounce (re-checked against live state so a still-churning topology is
+  never touched) it promotes that display to main and recovers the cursor.
+  Unlike the stabilization watch this guard is always on — it is the baseline
+  recovery path even with stabilization disabled — and with two or more
+  displays online it never acts.
+
+  Both layers only treat the symptom. If a TV keeps dropping its link like
+  this, fix the cause on the TV side: turn off **HDMI Deep Color** (marketed
+  as Ultra HD Deep Color / HDMI Ultra HD Color on LG and others) for the
+  Mac's input, and suspect a marginal cable. In the incident that motivated
+  these layers, routing audio to the TV triggered an HDMI renegotiation that
+  failed only while Deep Color was enabled — the TV dropped the link seconds
+  after every switch and came back under a new UUID; disabling Deep Color
+  stopped the flapping entirely, at no visible cost for desktop use.
 - **Enable / disable**: the private `CGSConfigureDisplayEnabled` symbol
   (CoreGraphics, re-exported from `SkyLight.framework`). Apple has shipped
   it stable for years, but it's undocumented and could disappear in a

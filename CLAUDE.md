@@ -15,19 +15,29 @@ via named presets. Config lives at `~/.config/aspace/config.json`.
 Three Swift targets:
 
 - `DisplayKit` — all real logic. CoreGraphics access is behind the
-  `DisplayBackend` seam, so decision-making code is pure and value-based.
+  `DisplayBackend` seam (and CoreAudio behind `AudioBackend`), so
+  decision-making code is pure and value-based.
 - `AspaceCLI` / `AspaceApp` — glue. Parse input or render the menu, then call
   `DisplayKit`.
 
 Rule: new behavior goes in `DisplayKit` with unit tests; keep the CLI and app
 as thin wiring. Follow the existing pure helpers — `ProfileRunner`,
 `ResolutionRunner`, `ResolutionState`, `DisplayModeMatcher`, `DisplayModeReport`,
-`ProfileCapture`. Profiles control topology (which displays are on + the main);
-`resolutions` are an independent axis that only changes scaling.
+`ProfileCapture`, `ProfileSummary`, `AudioRunner`. Profiles control topology
+(which displays are on + the main) and optionally the audio output
+(`audioOutput`); `resolutions` are an independent axis that only changes
+scaling.
 
 Design philosophy to preserve: non-destructive. A missing/offline display or an
 unsupported mode is skipped with a warning, never aborts the operation; the
 runner refuses any profile that would leave zero displays enabled.
+
+Two recovery layers handle a flaky HDMI link re-enumerating a display under a
+new UUID (see README "How it works"): the post-switch stabilization watch in
+`ProfileRunner.run` (optional — menu toggle / `--no-stabilize`), and the app's
+always-on sole-display guard, whose pure candidate rule is
+`ProfileRunner.soleDisplayNeedingMain`. Keep that split: the guard's rule is
+tested in `DisplayKit`; only the debounce/event wiring lives in `AspaceApp`.
 
 ## Build / test / run
 
@@ -39,8 +49,9 @@ make install                  # install to ~/.local/bin + /Applications (kills r
 ```
 
 Tests use swift-testing (`@Suite`/`@Test`/`#expect`). They must not touch real
-displays: drive `ProfileRunner`/`ResolutionRunner` through `FakeBackend`, and
-test mode logic with synthetic `DisplayMode` values.
+displays or audio devices: drive `ProfileRunner`/`ResolutionRunner` through
+`FakeBackend`, `AudioRunner` through `FakeAudioBackend`, and test mode logic
+with synthetic `DisplayMode` values.
 
 ## Installing / reinstalling the app
 
