@@ -166,7 +166,13 @@ public enum ProfileRunner {
             throw RunError.wouldDisableEverything(name)
         }
 
-        let liveUUIDs = Set(backend.listDisplays().map { $0.uuid.uppercased() })
+        let liveDisplays = backend.listDisplays()
+        let liveUUIDs = Set(liveDisplays.map { $0.uuid.uppercased() })
+        // Remembered so an aborted switch can restore it: even the abort path
+        // can strand the system with NO main display (soft-enabling a display
+        // that never comes online can steal main-ness into the void), which
+        // breaks menu interaction system-wide.
+        let previousMain = liveDisplays.first { $0.isMain }?.uuid.uppercased()
         AspaceLog.profile.notice("""
             plan profile='\(name, privacy: .public)' \
             online=[\(liveUUIDs.sorted().joined(separator: ","), privacy: .public)] \
@@ -276,6 +282,7 @@ public enum ProfileRunner {
             guard backend.listDisplays().contains(where: { $0.uuid.uppercased() == survivor }) else {
                 AspaceLog.profile.error("survivor \(survivor, privacy: .public): never came online after \(waited, privacy: .public)s; leaving current displays enabled")
                 warn("profile '\(name)': the target display never came online; left the current displays enabled")
+                restoreMainIfLost(previousMain: previousMain, backend: backend, warn: warn)
                 return
             }
             AspaceLog.profile.notice("survivor \(survivor, privacy: .public): online after \(waited, privacy: .public)s")
@@ -322,6 +329,31 @@ public enum ProfileRunner {
         stabilize(expectedMain: effectiveMain, backend: backend, sleep: sleepFn, warn: warn)
 
         AspaceLog.profile.notice("profile '\(name, privacy: .public)' applied")
+    }
+
+    /// Safety net for the abort path: soft-enabling a display that never
+    /// materializes can leave the system with NO main display (observed live
+    /// after a TV refused to wake — menus stopped responding system-wide until
+    /// a main was reassigned by hand). If every online display reports
+    /// `isMain == false`, re-assign main: the display that was main before the
+    /// attempt when it is still online, otherwise any online display. A system
+    /// with a wrong main beats a system with none.
+    static func restoreMainIfLost(
+        previousMain: String?,
+        backend: DisplayBackend,
+        warn: (String) -> Void
+    ) {
+        let displays = backend.listDisplays()
+        guard !displays.isEmpty, !displays.contains(where: { $0.isMain }) else { return }
+
+        let candidate = displays.first { $0.uuid.uppercased() == previousMain }?.uuid
+            ?? displays.map { $0.uuid }.sorted().first!
+        AspaceLog.profile.notice("no main display left after aborted switch; restoring \(candidate, privacy: .public)")
+        do {
+            try backend.setMain(uuid: candidate)
+        } catch {
+            warn("could not restore main display \(candidate): \(error)")
+        }
     }
 
     // MARK: - Post-apply stabilization

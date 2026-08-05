@@ -23,6 +23,15 @@ final class FakeBackend: DisplayBackend {
     /// UUIDs the backend reports as currently online (in `listDisplays`).
     var online: Set<String>
 
+    /// UUID currently reported as the main display (nil models the real
+    /// "no main left" limbo a botched reconfiguration can leave behind).
+    var main: String?
+
+    /// Enabling one of these UUIDs clears `main` without a replacement —
+    /// models soft-enabling a display that never materializes stealing
+    /// main-ness into the void (the observed TV failure mode).
+    var mainLostOnEnable: Set<String> = []
+
     /// UUIDs aspace has observed at some point — superset of `online`.
     var known: Set<String>
 
@@ -78,7 +87,7 @@ final class FakeBackend: DisplayBackend {
                 uuid: uuid,
                 name: uuid,
                 isEnabled: true,
-                isMain: false,
+                isMain: uuid == main,
                 bounds: .zero
             )
         }
@@ -99,6 +108,7 @@ final class FakeBackend: DisplayBackend {
         ops.append(enabled ? .enable(key) : .disable(key))
         if enabled {
             known.insert(key)
+            if mainLostOnEnable.contains(key) { main = nil }
             if let polls = lagOnlinePolls[key] {
                 lagPending[key] = polls          // not online until polled enough
             } else {
@@ -107,6 +117,7 @@ final class FakeBackend: DisplayBackend {
         } else {
             online.remove(key)
             lagPending[key] = nil
+            if key == main { main = nil }
             for dropped in dropOnDisable[key] ?? [] { online.remove(dropped) }
         }
     }
@@ -124,6 +135,7 @@ final class FakeBackend: DisplayBackend {
             throw DisplayKitError.displayNotFound(key)
         }
         ops.append(.setMain(key))
+        main = key
     }
 
     func warpCursorToMainDisplay() {

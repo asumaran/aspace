@@ -72,6 +72,7 @@ import Testing
             warn: { _ in }
         )
         #expect(backend.ops.contains(.setMain(NEW_TV)))
+        #expect(backend.main == NEW_TV)
     }
 
     @Test func cursorIsReWarpedOnceTheAdoptedMainSettles() {
@@ -140,6 +141,58 @@ import Testing
         // a main there could fight the user's arrangement.
         let backend = FakeBackend(online: [A, B], known: [TV, A, B])
         ProfileRunner.stabilize(expectedMain: TV, backend: backend, warn: { _ in })
+        #expect(backend.ops.isEmpty)
+    }
+
+    // MARK: - Restoring a lost main after an aborted switch
+
+    @Test func abortedSwitchRestoresTheStolenMain() throws {
+        // The live incident: treadmill soft-enables the TV, the TV never comes
+        // online (cold HDMI link), and that phantom enable steals main-ness
+        // into the void. The abort must put main back on the display that had
+        // it, or the whole session is left without a main (broken menus).
+        let STUDIO = "STUDIO-UUID"
+        let backend = FakeBackend(online: [STUDIO], known: [STUDIO, TV])
+        backend.main = STUDIO
+        backend.mainLostOnEnable = [TV]
+        backend.lagOnlinePolls = [TV: Int.max]   // enabled, but never shows up
+
+        try ProfileRunner.run(
+            profile: "treadmill",
+            config: AspaceConfig(profiles: ["treadmill": .init(disable: [STUDIO])]),
+            backend: backend,
+            warn: { _ in }
+        )
+
+        #expect(backend.online == [STUDIO], "abort leaves the current displays enabled")
+        #expect(backend.main == STUDIO, "the stolen main must be restored")
+    }
+
+    @Test func restoreMainPrefersThePreviousMain() {
+        let backend = FakeBackend(online: [A, B])
+        ProfileRunner.restoreMainIfLost(previousMain: B, backend: backend, warn: { _ in })
+        #expect(backend.main == B)
+    }
+
+    @Test func restoreMainFallsBackToAnyOnlineDisplay() {
+        // The previous main is offline (it was the display being switched
+        // away from); any online display beats leaving the system mainless.
+        let backend = FakeBackend(online: [A, B])
+        ProfileRunner.restoreMainIfLost(previousMain: TV, backend: backend, warn: { _ in })
+        #expect(backend.main != nil)
+    }
+
+    @Test func restoreMainLeavesAnExistingMainAlone() {
+        let backend = FakeBackend(online: [A, B])
+        backend.main = A
+        ProfileRunner.restoreMainIfLost(previousMain: B, backend: backend, warn: { _ in })
+        #expect(backend.main == A)
+        #expect(backend.ops.isEmpty)
+    }
+
+    @Test func restoreMainDoesNothingWithNoDisplaysOnline() {
+        let backend = FakeBackend(online: [])
+        ProfileRunner.restoreMainIfLost(previousMain: TV, backend: backend, warn: { _ in })
         #expect(backend.ops.isEmpty)
     }
 
